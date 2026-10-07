@@ -172,13 +172,13 @@ const sourceLogs = await pub.getLogs({
   fromBlock: BigInt(JSON.parse(readFileSync(join(indexerDir, "..", "shared/deployments/31337.json"), "utf8")).startBlock),
 });
 const epochs = (await gql(ENDPOINT, `{ MarketEpoch(order_by: { epoch: asc }) { id source sourceCode poster matches } }`)).MarketEpoch;
-const names = ["ChainlinkCRE", "OracleMomentum"];
+const names = ["ChainlinkCRE", "ChainlinkFeeds"]; // MarketMeta.SOURCE_CRE, SOURCE_FEEDS
 check(`${sourceLogs.length} MetaSource logs on chain → ${epochs.length} epochs, each with its source and poster`,
   epochs.map((e) => [e.id, e.source, e.sourceCode, e.poster]),
   sourceLogs.map((l) => [String(l.args.epoch), names[l.args.source], l.args.source, lc(l.args.poster)]));
 const e1 = epochs.find((e) => e.id === String(m.match1.metaEpoch));
-// Locally the relay's keeper posts the meta with postFromOracle (no CRE DON on a fork).
-check(`the seeded matches' epoch ${m.match1.metaEpoch} is oracle-sourced`, [e1?.source, e1?.sourceCode], ["OracleMomentum", 1]);
+// Locally the relay's keeper posts the meta with postFromFeeds (no CRE DON on a fork).
+check(`the seeded matches' epoch ${m.match1.metaEpoch} is Chainlink-feeds-sourced`, [e1?.source, e1?.sourceCode], ["ChainlinkFeeds", 1]);
 const onchainSource = await pub.readContract({ address: m.contracts.marketMeta, abi: abi("MarketMeta"), functionName: "epochSource", args: [BigInt(m.match1.metaEpoch)] });
 check("…and MarketMeta.epochSource() agrees", onchainSource, 1);
 

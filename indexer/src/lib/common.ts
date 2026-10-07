@@ -35,6 +35,9 @@ export function meta(event: {
   };
 }
 
+/** Arc mainnet: the roster's Chainlink feed proxies are the ones the deploy registers. */
+export const ARC_MAINNET = 5042;
+
 export const addr = (a: string): string => a.toLowerCase();
 export const logId = (m: Meta): string => `${m.tx}-${m.logIndex}`;
 export const isZero = (a: string): boolean => addr(a) === ZERO_ADDRESS;
@@ -230,7 +233,11 @@ export function newCoin(coinId: number): Coin {
     ticker: r?.ticker ?? `#${coinId}`,
     name: r?.name ?? `Coin ${coinId}`,
     kind: r?.kind ?? "unknown",
+    pair: r?.pair ?? "",
     feedId: r?.feedId ?? "",
+    feed: undefined,
+    feedDecimals: r?.decimals ?? 0,
+    feedChanges: 0,
     archetype: 0,
     archetypeName: ARCHETYPE_NAMES[0],
     registered: false,

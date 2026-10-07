@@ -493,3 +493,21 @@ indexer.onEvent({ contract: "MempireArena", event: "LimitsChanged" }, async ({ e
     txHash: m.tx,
   });
 });
+
+// setEntryGateway(): the MempireCCIPGateway allowed to call createMatchFor /
+// joinMatchFor (address(0) turns cross-chain entry off).
+indexer.onEvent({ contract: "MempireArena", event: "EntryGatewayChanged" }, async ({ event, context }) => {
+  const m = meta(event);
+  context.AdminChange.set({
+    id: logId(m),
+    contract: "MempireArena",
+    change: "EntryGatewayChanged",
+    address: addr(event.params.gateway),
+    coinId: undefined,
+    selector: undefined,
+    cctpDomain: undefined,
+    timestamp: m.ts,
+    blockNumber: m.block,
+    txHash: m.tx,
+  });
+});

@@ -130,6 +130,8 @@ export const QUERIES = {
         ticker
         name
         kind
+        pair
+        feed
         archetypeName
         fielded
         wins
@@ -202,12 +204,42 @@ export const QUERIES = {
         changes
         updatedAt
       }
-      OracleChange(order_by: { timestamp: desc }, limit: 5) {
+      AdminChange(order_by: { timestamp: desc }, limit: 5) {
         contract
-        oracle
-        cards
+        change
+        address
+        coinId
+        selector
+        cctpDomain
         timestamp
         txHash
+      }
+    }`,
+
+  crossChain: /* GraphQL */ `
+    query CrossChain {
+      CrossChainMessage(order_by: { createdAt: desc }, limit: 20) {
+        id
+        status
+        action
+        player
+        matchId
+        created
+        amount
+        cctpDomain
+        sourceChainSelector
+        failReason
+        createdAt
+        completedAt
+        failedAt
+        recoveredAt
+        txHash
+      }
+      CCIPSource {
+        id
+        sender
+        cctpDomain
+        enabled
       }
     }`,
 };

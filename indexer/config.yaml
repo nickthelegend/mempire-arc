@@ -8,7 +8,7 @@
 # test/config.test.ts fails if they drift. Addresses and start_block are
 # written by `pnpm sync` from shared/deployments/5042002.json after the deploy.
 name: mempire-indexer
-description: Mempire on Arc — fighters, merges, chests, escrowed USDC 1v1 matches, the on-chain play log and the market meta (Chainlink CRE or signed-oracle momentum).
+description: Mempire on Arc — fighters priced by Chainlink Data Feeds, merges, chests, escrowed USDC 1v1 matches, the on-chain play log, the market meta (Chainlink CRE or Data Feeds momentum) and cross-chain entries over Chainlink CCIP.
 # Store every address lowercase so the app can query with address.toLowerCase().
 address_format: lowercase
 # Every handler stamps rows with the transaction hash (the live play feed links
@@ -30,7 +30,7 @@ contracts:
       - event: ChestSkipped
       - event: ChestOpening
       - event: ChestOpened
-      - event: OracleChanged
+      - event: CoinFeedChanged
   - name: MempireArena
     abi_file_path: ./abis/MempireArena.json
     events:
@@ -45,12 +45,24 @@ contracts:
       - event: WinRewarded
       - event: PayoutHeld
       - event: LimitsChanged
+      - event: EntryGatewayChanged
   - name: MarketMeta
     abi_file_path: ./abis/MarketMeta.json
     events:
       - event: MetaPosted
       - event: MetaSource
-      - event: OracleChanged
+      - event: CardsChanged
+  # Arc side of cross-chain play: CCIP messages from MempireRemoteEntry on
+  # Base / Ethereum (USDC itself moves by CCTP). Not deployed everywhere: the
+  # sync script leaves a placeholder (no events) when ccipGateway is unset.
+  - name: MempireCCIPGateway
+    abi_file_path: ./abis/MempireCCIPGateway.json
+    events:
+      - event: Entered
+      - event: CashedOut
+      - event: MessageFailed
+      - event: MessageRecovered
+      - event: RemoteEntrySet
 chains:
   - id: 5042002 # Arc testnet — native HyperSync (https://5042002.hypersync.xyz)
     start_block: 0 # TODO: set from shared/deployments/5042002.json (startBlock)
@@ -61,3 +73,5 @@ chains:
         address: "0x00000000000000000000000000000000000c0de2" # TODO: set from shared/deployments/5042002.json (arena)
       - name: MarketMeta
         address: "0x00000000000000000000000000000000000c0de3" # TODO: set from shared/deployments/5042002.json (marketMeta)
+      - name: MempireCCIPGateway
+        address: "0x00000000000000000000000000000000000c0de4" # TODO: set from shared/deployments/5042002.json (ccipGateway)

@@ -1,9 +1,16 @@
 # Mempire indexer (Envio HyperIndex)
 
 An [Envio HyperIndex](https://docs.envio.dev) indexer for Mempire on **Arc**, Circle's stablecoin-native
-L1. It turns the three Mempire contracts into a GraphQL API the app uses for leaderboards, match
-history, the live play feed and fighter win rates. All money is **USDC** (Arc's gas token, ERC-20
-interface at `0x3600000000000000000000000000000000000000`, 6 decimals).
+L1. It turns the four Mempire contracts into a GraphQL API the app uses for leaderboards, match
+history, the live play feed, fighter win rates and cross-chain entries. All money is **USDC** (Arc's
+gas token, ERC-20 interface at `0x3600000000000000000000000000000000000000`, 6 decimals).
+
+Every fighter is a **Chainlink Data Feed on Arc** (20 of them: majors, DeFi tokens, gold and FX; see
+`shared/roster.json`). There is no signed price oracle any more: `MempireCards.mint(coinId, permit)` /
+`mintWithMempire(coinId)` read the coin's AggregatorV3 proxy on chain and stamp the card with that
+answer, and `MarketMeta.postFromFeeds` computes each epoch's meta from the feeds' own 24-hour history.
+Players on Base or Ethereum can play through **Chainlink CCIP** (`MempireCCIPGateway`): CCTP moves
+their USDC to Arc, a CCIP message tells the gateway to seat them in a match or cash them out.
 
 | Config | Chain | Data source |
 |---|---|---|
@@ -15,7 +22,7 @@ interface at `0x3600000000000000000000000000000000000000`, 6 decimals).
 - The three configs share everything above `chains:` (contracts, events, field selection); `test/config.test.ts` fails if they drift
 - `schema.graphql` holds the entity model and `src/handlers/*.ts` the handlers
 - `test/mempire.test.ts` holds the handler tests (simulated events, no network or Docker)
-- `scripts/sync-addresses.mjs` refreshes ABIs + roster and writes a chain's addresses and start block from `shared/deployments/<chainId>.json`
+- `scripts/sync-addresses.mjs` refreshes ABIs + roster and writes a chain's addresses and start block from `shared/deployments/<chainId>.json` (the CCIP gateway from the `ccipGateway` key, kept as a placeholder when that is missing or zero)
 - `scripts/query.mjs` holds the app's queries and a runner that tries them against an endpoint
 - `scripts/local-indexer.sh` runs the indexer against the fork with its own Postgres + Hasura; `scripts/seed-local.mjs` plays real matches on the fork; `scripts/verify-local.mjs` checks the GraphQL API against what was seeded
 
@@ -23,9 +30,10 @@ interface at `0x3600000000000000000000000000000000000000`, 6 decimals).
 
 | Contract | Events | What they drive |
 |---|---|---|
-| `MempireCards` (ERC-721 fighters) | `CoinRegistered`, `CoinActive`, `CardMinted`, `CardMerged`, `Transfer`, `ChestGranted`, `ChestForfeited`, `ChestUnlocking`, `ChestSkipped`, `ChestOpening`, `ChestOpened`, `OracleChanged` | roster, every card with its owner/level/history, merges, chest lifecycle, oracle rewiring |
-| `MempireArena` (escrowed USDC 1v1) | `MatchCreated`, `MatchJoined`, `MatchCancelled`, `Played`, `Checkpoint`, `Claimed`, `MatchSettled`, `MatchVoided`, `WinRewarded`, `PayoutHeld`, `LimitsChanged` | matches, per-seat results and USDC P&L, the on-chain play log, claims, held payouts, the open tier cap and pause switch |
-| `MarketMeta` (Chainlink CRE or signed-oracle momentum) | `MetaPosted`, `MetaSource`, `OracleChanged` | per-epoch ±15% modifier per fighter, current modifier on each coin, which source wrote the epoch, oracle rewiring |
+| `MempireCards` (ERC-721 fighters) | `CoinRegistered`, `CoinActive`, `CardMinted`, `CardMerged`, `Transfer`, `ChestGranted`, `ChestForfeited`, `ChestUnlocking`, `ChestSkipped`, `ChestOpening`, `ChestOpened`, `CoinFeedChanged` | roster, every card with its owner/level/history and Chainlink mint price, merges, chest lifecycle, feed migrations |
+| `MempireArena` (escrowed USDC 1v1) | `MatchCreated`, `MatchJoined`, `MatchCancelled`, `Played`, `Checkpoint`, `Claimed`, `MatchSettled`, `MatchVoided`, `WinRewarded`, `PayoutHeld`, `LimitsChanged`, `EntryGatewayChanged` | matches, per-seat results and USDC P&L, the on-chain play log, claims, held payouts, the open tier cap and pause switch, the CCIP gateway allowed to seat players |
+| `MarketMeta` (Chainlink CRE or Chainlink Data Feeds momentum) | `MetaPosted`, `MetaSource`, `CardsChanged` | per-epoch ±15% modifier per fighter, current modifier on each coin, which source wrote the epoch, cards rewiring |
+| `MempireCCIPGateway` (Arc side of CCIP cross-chain play) | `Entered`, `CashedOut`, `MessageFailed`, `MessageRecovered`, `RemoteEntrySet` | one row per CCIP message (entered / cashed out / failed / recovered), the allowed source chains |
 
 ## Entity model
 
@@ -36,22 +44,25 @@ Player ─┬─< Card >── Coin ─< CoinModifier >── MarketEpoch
         │                        └─< Claim
         └─< Chest ─< Card (drops)
 Card ─< Merge     DailyStats (per UTC day)     Totals (id "global")     ArenaLimits (id "arena")
+CrossChainMessage (by player) >── Match     CCIPSource (per CCIP selector)     AdminChange (wiring log)
 ```
 
 | Entity | Notes |
 |---|---|
 | `Player` | matches / wins / losses / ties / voids, **`netUsdc`** (payout − stake, 6 dp), **`wageredUsdc`**, **`heldUsdc`** (payouts the arena is holding for `withdraw()`), cards owned, highest level, merges, chests, rewarded wins, `lastActive` |
-| `Card` | owner, coin, level, archetype, source (Mint / MintMempire / Starter / Chest), oracle mint price + expo, chest it dropped from, `burned`, `mergedInto`, `mergesAbsorbed`, its own win/loss record |
-| `Coin` | ticker, name and kind (crypto / meme / stock, joined from `shared/roster.json` by feed id), archetype, supply, merges, **deck appearances, wins / losses / ties when fielded, `winRateBps`**, results split by buffed/nerfed modifier, `timesPlayed`, current modifier |
+| `Card` | owner, coin, level, archetype, source (Mint / MintMempire / Starter / Chest), `mintPrice` (the Chainlink feed answer at mint) and `mintExpo` (−feed decimals, so USD = `mintPrice × 10^mintExpo`), chest it dropped from, `burned`, `mergedInto`, `mergesAbsorbed`, its own win/loss record |
+| `Coin` | ticker, name, kind (crypto / defi / rwa), Chainlink `pair` and `feedDecimals` (joined from `shared/roster.json` by feed id = keccak256 of the pair), `feed` (the AggregatorV3 proxy: from the roster on Arc mainnet, otherwise from `CoinFeedChanged`; see below) and `feedChanges`, archetype, supply, merges, **deck appearances, wins / losses / ties when fielded, `winRateBps`**, results split by buffed/nerfed modifier, `timesPlayed`, current modifier |
 | `Match` | both players and session keys, tier, `currency` (always `USDC`) and `currencyAddress`, stake, deck hashes, powers, meta epoch, state, outcome, winner, plays per seat, checkpoints, both claims, pot / rake / payouts, chest tier, timestamps, `durationSeconds`, `byTimeout`, `disputed` |
 | `MatchSeat` | one row per (match, seat): the player's side, deck `cardIds` → `coinIds`, result, payout, `net`. This is the player-history entity |
 | `Play` | match, seat, player, tick, cardIndex, **card and coin resolved from the seat's deck**, x, y, per-seat sequence, block, log index, timestamp, tx hash. This drives the "live on Arc" feed |
 | `Chest` | tier, bought, state machine (Idle → Unlocking → Revealing → Opened), the match that paid it, skip fee, reveal block, re-commits, seed, drops |
-| `MarketEpoch` / `CoinModifier` | each epoch's report, its top and bottom movers, the matches that snapshotted it, and its `source` (`ChainlinkCRE` from `onReport`, `OracleMomentum` from `postFromOracle`), raw `sourceCode` (0 / 1) and `poster` (the CRE forwarder, or whoever called `postFromOracle`) |
+| `MarketEpoch` / `CoinModifier` | each epoch's report, its top and bottom movers, the matches that snapshotted it, and its `source` (`ChainlinkCRE` from `onReport`, `ChainlinkFeeds` from `postFromFeeds`), raw `sourceCode` (0 / 1) and `poster` (the CRE forwarder, or whoever called `postFromFeeds`) |
 | `DailyStats` | matches created / started / settled / voided / cancelled, ties, **`volumeUsdc` / `rakeUsdc`**, plays, checkpoints, mints, merges, chests, rewards, unique and new players |
 | `Totals` | protocol-wide counters including `volumeUsdc` / `rakeUsdc` (single row `id: "global"`) |
 | `ArenaLimits` | `maxTier`, `paused`, `changes` from `LimitsChanged` (single row `id: "arena"`). The constructor sets the first limits without an event, so the row appears with the first `setLimits()`; until then read `maxTier()` / `paused()` from the contract |
-| `OracleChange` | each `OracleChanged` on `MempireCards` or `MarketMeta`: the contract, the new oracle and (MarketMeta) the cards contract |
+| `CrossChainMessage` | one row per CCIP `messageId`: `status` (`Entered` / `CashedOut` / `Failed` / `Recovered`), `action` (`Enter` / `CashOut`), `player`, the `match` entered and whether it was `created` or joined, the cash-out `amount` and CCTP `cctpDomain`; for a failure the `sourceChainSelector`, remote `sender`, `failData` (what `retryFailedMessage` needs back) and `failReason`; `createdAt` / `completedAt` / `failedAt` / `recoveredAt`. Indexed by (player, createdAt desc) |
+| `CCIPSource` | the source chains the gateway accepts (`RemoteEntrySet`), one row per CCIP chain selector: the `MempireRemoteEntry` sender, its CCTP domain, `enabled` (false once the sender is set to zero) |
+| `AdminChange` | contract rewiring, one row per event: `CoinFeedChanged` (with `coinId`), `CardsChanged`, `EntryGatewayChanged`, `RemoteEntrySet` (with `selector` / `cctpDomain`); `address` is the new feed / cards / gateway / sender. Replaces the old `OracleChange` |
 | `Merge`, `Checkpoint`, `Claim`, `HeldPayout` | event logs |
 | `PlayerDay`, `SettlementTx` | internal join rows: unique-players-per-day, and settlement tx → match (so the `ChestGranted` / `ChestForfeited` that the arena fires later in the same tx find their match) |
 
@@ -65,7 +76,9 @@ Card ─< Merge     DailyStats (per UTC day)     Totals (id "global")     ArenaL
 - **Held payouts.** If USDC refuses a push (a blocklisted recipient), the arena emits `PayoutHeld` and keeps the amount for `withdraw()`. The player's `heldUsdc` grows; a held rake to the treasury is logged in `HeldPayout` but credits no player.
 - **Mints and burns.** A `Transfer` from the zero address is a mint, which the `CardMinted` in the next log creates. A `Transfer` to the zero address is a burn, and the following `CardMerged` links the burned card to the card it was merged into.
 - **Market resets.** A coin left out of an epoch's `MetaPosted` reads 0 on chain for that epoch, so its `currentModifierBps` resets to 0.
-- **Meta source.** `MarketMeta` emits `MetaSource(epoch, source, poster)` right after `MetaPosted` in the same transaction. The handler fills `source` / `sourceCode` / `poster` on that epoch's row and does not depend on the log order. On Arc testnet both sources can appear (the CRE workflow in `cre/` and the relay's oracle keeper race for each window); on **Arc mainnet, CRE is not available, so every epoch is `OracleMomentum`**.
+- **Meta source.** `MarketMeta` emits `MetaSource(epoch, source, poster)` right after `MetaPosted` in the same transaction. The handler fills `source` / `sourceCode` / `poster` on that epoch's row and does not depend on the log order. On Arc testnet both sources can appear (the CRE workflow in `cre/` and the relay's keeper calling the permissionless `postFromFeeds` race for each window); on **Arc mainnet, CRE is not available, so every epoch is `ChainlinkFeeds`** (`SOURCE_FEEDS = 1`).
+- **Which feed prices a fighter.** `registerCoins(feedIds, tickers, maxAges, feeds)` stores each coin's AggregatorV3 proxy, but `CoinRegistered` does not log it. On Arc mainnet the deploy registers the roster's proxies unchanged, so `Coin.feed` is filled from `shared/roster.json` there. On testnet (and the fork) a feed Chainlink does not serve is a `MirrorAggregator`, so `Coin.feed` stays null until a `CoinFeedChanged`; read `MempireCards.coin(coinId).feed` for it. `CoinFeedChanged` (a `setCoinFeed` migration) always updates `Coin.feed` and logs an `AdminChange`.
+- **Cross-chain messages.** The gateway's `Entered` follows the arena's own `MatchCreated` / `MatchJoined` in the same transaction, so the match, seats and stake are indexed exactly as for a player on Arc; `CrossChainMessage` only records the message and links its `match`. A message whose action reverts (typically ENTER before its CCTP mint has landed) logs `MessageFailed`: the handler decodes `abi.encode(uint8 action, address player, bytes body)` from its data to fill `action`, `player`, the target `matchId` (join) or `amount` (cash-out). A later `retryFailedMessage` emits `Entered` / `CashedOut` and then `MessageRecovered`, so the row ends `Recovered` with both the failure and the result on it. `Entered` / `CashedOut` do not carry the source chain, so `sourceChainSelector` is only known for messages that failed at least once.
 - **Addresses** are stored lowercase (`address_format: lowercase`). Query with `address.toLowerCase()`.
 - **Amounts** are `BigInt` in base units: USDC in 6-decimal units (`1000000` = $1), $MEMPIRE in wei (18 dp).
 
@@ -128,7 +141,7 @@ query LatestPlays($limit: Int = 50) {
 ```graphql
 query CoinWinRates {
   Coin(where: { registered: { _eq: true } }, order_by: [{ winRateBps: desc }, { fielded: desc }]) {
-    id ticker name kind archetypeName fielded wins losses ties winRateBps deckAppearances
+    id ticker name kind pair feed archetypeName fielded wins losses ties winRateBps deckAppearances
     timesPlayed liveSupply maxLevel currentModifierBps modifierEpoch
     winsBuffed lossesBuffed winsNerfed lossesNerfed
   }
@@ -151,12 +164,24 @@ query Overview($days: Int = 14) {
 }
 ```
 
-**Arena limits and oracle wiring**
+**Arena limits and contract wiring**
 
 ```graphql
 query ArenaLimits {
   ArenaLimits(limit: 1) { maxTier paused changes updatedAt }
-  OracleChange(order_by: { timestamp: desc }, limit: 5) { contract oracle cards timestamp txHash }
+  AdminChange(order_by: { timestamp: desc }, limit: 5) { contract change address coinId selector cctpDomain timestamp txHash }
+}
+```
+
+**Cross-chain entries** (add `where: { player: { _eq: $player } }` for one player's)
+
+```graphql
+query CrossChain {
+  CrossChainMessage(order_by: { createdAt: desc }, limit: 20) {
+    id status action player matchId created amount cctpDomain sourceChainSelector failReason
+    createdAt completedAt failedAt recoveredAt txHash
+  }
+  CCIPSource { id sender cctpDomain enabled }
 }
 ```
 
@@ -171,13 +196,13 @@ node scripts/query.mjs <graphql-url> playerHistory --player 0xYourAddress
 
 ## After deploying the contracts
 
-`scripts/deploy-testnet.sh` (via `contracts/script/Deploy.s.sol`) writes `shared/deployments/5042002.json`;
-a mainnet deploy writes `shared/deployments/5042.json`. Until then the testnet and mainnet configs carry
+`sh scripts/deploy.sh testnet` (via `contracts/script/Deploy.s.sol`) writes `shared/deployments/5042002.json`;
+`sh scripts/deploy.sh mainnet` writes `shared/deployments/5042.json`. Until then the testnet and mainnet configs carry
 `# TODO` placeholder addresses and `start_block: 0`. After the file exists:
 
 ```bash
 cd indexer
-pnpm sync              # Arc testnet: ABIs + roster, then cards/arena/marketMeta + start_block into config.yaml
+pnpm sync              # Arc testnet: ABIs + roster, then cards/arena/marketMeta/ccipGateway + start_block into config.yaml
 pnpm codegen
 pnpm test
 
@@ -185,7 +210,13 @@ pnpm sync:mainnet      # Arc mainnet: the same into config.mainnet.yaml
 pnpm codegen:mainnet   # types for the mainnet config (identical to testnet's: same project section)
 
 pnpm sync:local        # the fork: into config.local.yaml (local-indexer.sh up does this when stale)
+
+pnpm codegen:all       # codegen for mainnet, local, then testnet last (tests use the testnet types)
 ```
+
+`ccipGateway` is only in the deployment file when the chain has a CCIP router (`CCIP_ROUTER` at deploy).
+When it is missing or the zero address, the sync keeps the `MempireCCIPGateway` placeholder address
+(no code, so no events) with a `# not deployed` comment, which `--check` accepts.
 
 `node scripts/sync-addresses.mjs --check [--chain 5042]` exits non-zero while that config still has
 its placeholders. The script also refreshes `abis/` and `src/roster.generated.ts`, because Envio Cloud
@@ -197,7 +228,7 @@ The config file is the switch; handlers, schema and tests are network-agnostic.
 
 | | Arc testnet | Arc mainnet | Local fork |
 |---|---|---|---|
-| codegen | `pnpm codegen` | `pnpm codegen:mainnet` | `envio codegen --config config.local.yaml` |
+| codegen | `pnpm codegen` | `pnpm codegen:mainnet` | `pnpm codegen:local` |
 | run | `pnpm dev` / `pnpm start` | `pnpm start:mainnet` (or `ENVIO_CONFIG=config.mainnet.yaml pnpm dev`) | `pnpm local:up` |
 | Envio Cloud "Config file" | `config.yaml` | `config.mainnet.yaml` | — |
 
@@ -210,6 +241,9 @@ pnpm codegen   # generates .envio/types.d.ts from config.yaml + schema.graphql
 pnpm typecheck
 pnpm test      # vitest + createTestIndexer: simulated events through the real handlers
 ```
+
+The handler tests simulate chain `5042002`, so run them on the testnet codegen (`pnpm codegen`, or
+`pnpm codegen:all`, which ends with it). The handlers themselves typecheck under all three configs.
 
 ## Run locally against the arc-anvil fork (no testnet tx, no token)
 
@@ -254,7 +288,7 @@ tails the indexer.
 | relay (seed only) | `http://localhost:8799` | `MEMPIRE_RELAY` |
 
 **How it works.** `config.local.yaml` declares chain 31337 with `rpc: [{ url: http://127.0.0.1:8710, for: sync }]`
-(HyperSync has no local chain, so RPC is the only data source), the three addresses and start block
+(HyperSync has no local chain, so RPC is the only data source), the contract addresses and start block
 from `shared/deployments/31337.json`, and `rollback_on_reorg: false`. `local-indexer.sh up` refuses an
 RPC that is not chain 31337, syncs `config.local.yaml` when it is behind the deployment file, starts
 its own Postgres and Hasura, then runs `envio dev -r` with:
@@ -307,7 +341,7 @@ It writes `.local/seed-manifest.json` (wallet addresses, match ids, every play's
 - `Play`: every seeded drop, attributed to the player (not the session key) and resolved to the deck's card and coin
 - `Chest`, `Card`, `Merge`: tier, state, skip, drops linked to the chest, the burned card and the levelled one
 - `MarketEpoch`: one row per on-chain `MetaSource` log, with the same source and poster; the seeded matches'
-  epoch is `OracleMomentum` (the relay's keeper calls `postFromOracle`; there is no CRE DON on a fork) and
+  epoch is `ChainlinkFeeds` (the relay's keeper calls `postFromFeeds`; there is no CRE DON on a fork) and
   `MarketMeta.epochSource()` agrees
 - `Coin`, `DailyStats`, `Totals`, `MarketEpoch.matches`: recomputed from the indexed rows (other sessions may
   play on the same fork, so these are consistency checks rather than fixed numbers)

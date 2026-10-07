@@ -7,6 +7,7 @@
 //   match win   → MatchSettled then ChestGranted/ChestForfeited (linked via SettlementTx)
 import { indexer, type Card, type Chest } from "envio";
 import {
+  ARC_MAINNET,
   ARCHETYPE_NAMES,
   CARD_SOURCES,
   addr,
@@ -30,6 +31,10 @@ indexer.onEvent({ contract: "MempireCards", event: "CoinRegistered" }, async ({ 
   const feedId = event.params.feedId.toLowerCase();
   const archetype = Number(event.params.archetype);
   const r = rosterFor(coinId, feedId);
+  // registerCoins() takes the feed proxy but CoinRegistered does not log it.
+  // On Arc mainnet the deploy registers the roster's proxies as they are; on
+  // testnet a feed may be a MirrorAggregator, so leave it to CoinFeedChanged.
+  const rosterFeed = Number(event.chainId) === ARC_MAINNET ? r?.feed : undefined;
   let firstTime = false;
   await updateCoin(context, coinId, (c) => {
     firstTime = !c.registered;
@@ -38,7 +43,10 @@ indexer.onEvent({ contract: "MempireCards", event: "CoinRegistered" }, async ({ 
       ticker: event.params.ticker,
       name: r?.name ?? event.params.ticker,
       kind: r?.kind ?? "unknown",
+      pair: r?.pair ?? c.pair,
       feedId,
+      feed: c.feed ?? rosterFeed,
+      feedDecimals: r?.decimals ?? c.feedDecimals,
       archetype,
       archetypeName: ARCHETYPE_NAMES[archetype] ?? `#${archetype}`,
       registered: true,
@@ -52,13 +60,20 @@ indexer.onEvent({ contract: "MempireCards", event: "CoinActive" }, async ({ even
   await updateCoin(context, Number(event.params.coinId), (c) => ({ ...c, active: event.params.active }));
 });
 
-indexer.onEvent({ contract: "MempireCards", event: "OracleChanged" }, async ({ event, context }) => {
+// setCoinFeed(): a fighter repointed at another Chainlink proxy for the same pair.
+indexer.onEvent({ contract: "MempireCards", event: "CoinFeedChanged" }, async ({ event, context }) => {
   const m = meta(event);
-  context.OracleChange.set({
+  const coinId = Number(event.params.coinId);
+  const feed = addr(event.params.feed);
+  await updateCoin(context, coinId, (c) => ({ ...c, feed, feedChanges: c.feedChanges + 1 }));
+  context.AdminChange.set({
     id: logId(m),
     contract: "MempireCards",
-    oracle: addr(event.params.oracle),
-    cards: undefined,
+    change: "CoinFeedChanged",
+    address: feed,
+    coinId,
+    selector: undefined,
+    cctpDomain: undefined,
     timestamp: m.ts,
     blockNumber: m.block,
     txHash: m.tx,

@@ -12,10 +12,12 @@ enum Currency {
   USDC
 }
 
+# shared/roster.json: majors, DeFi tokens, and real-world assets (gold, FX) —
+# every fighter is a Chainlink Data Feed on Arc. `unknown` = not in the roster.
 enum CoinKind {
   crypto
-  meme
-  stock
+  defi
+  rwa
   unknown
 }
 
@@ -56,11 +58,26 @@ enum SeatResult {
 }
 
 # Who wrote an epoch's meta (MarketMeta.MetaSource): 0 = a Chainlink CRE report
-# through the KeystoneForwarder (Arc testnet), 1 = postFromOracle (signed-oracle
-# spot vs EMA momentum; the only source on Arc mainnet, where CRE does not run).
+# through the KeystoneForwarder (Arc testnet), 1 = postFromFeeds (SOURCE_FEEDS:
+# each fighter's 24 h move computed on chain from its Chainlink Data Feed; the
+# only source on Arc mainnet, where CRE does not run).
 enum MetaSourceKind {
   ChainlinkCRE
-  OracleMomentum
+  ChainlinkFeeds
+}
+
+# Where a cross-chain (CCIP) message stands on MempireCCIPGateway.
+enum CrossChainStatus {
+  Entered # ENTER ran: the player was seated in a match
+  CashedOut # CASH_OUT ran: USDC burned with CCTP back to the source chain
+  Failed # the action reverted (e.g. ENTER before its CCTP mint); stored for retry
+  Recovered # a failed message was retried successfully (see `action`)
+}
+
+enum CrossChainAction {
+  Enter
+  CashOut
+  Unknown
 }
 
 enum ChestTier {
@@ -131,7 +148,16 @@ type Coin {
   ticker: String!
   name: String!
   kind: CoinKind!
-  feedId: String!
+  pair: String! # Chainlink pair from the roster, e.g. "BTC / USD" ("" if not in the roster)
+  feedId: String! # keccak256(pair)
+  # The Chainlink AggregatorV3 proxy the cards contract prices this fighter
+  # with. CoinRegistered does not carry it, so it is filled from the roster on
+  # Arc mainnet (where the deploy registers exactly those proxies) and from
+  # CoinFeedChanged everywhere; null on testnet / local until a CoinFeedChanged
+  # (read MempireCards.coin(coinId).feed there).
+  feed: String
+  feedDecimals: Int! # roster decimals of the feed answer (0 if not in the roster)
+  feedChanges: Int! # CoinFeedChanged count (feed migrations)
   archetype: Int!
   archetypeName: String!
   registered: Boolean!
@@ -178,8 +204,8 @@ type Card {
   level: Int! @index
   archetype: Int!
   source: CardSource!
-  mintPrice: BigInt! # oracle price at mint (0 for starter and chest cards)
-  mintExpo: Int!
+  mintPrice: BigInt! # Chainlink feed answer at mint (0 for starter and chest cards)
+  mintExpo: Int! # −feed decimals: price = mintPrice × 10^mintExpo USD
   mintedAt: Int!
   mintTxHash: String!
   chest: Chest # set when the card dropped from a chest
@@ -392,8 +418,8 @@ type MarketEpoch {
   # From MetaSource, emitted right after MetaPosted in the same transaction.
   # Unset only if a MetaPosted is ever seen without one.
   source: MetaSourceKind
-  sourceCode: Int # raw uint8: 0 = Chainlink CRE, 1 = oracle momentum
-  poster: String # CRE: the forwarder; oracle: whoever called postFromOracle
+  sourceCode: Int # raw uint8: 0 = Chainlink CRE, 1 = Chainlink Data Feeds
+  poster: String # CRE: the forwarder; feeds: whoever called postFromFeeds
   modifiers: [CoinModifier!]! @derivedFrom(field: "epoch")
 }
 
@@ -467,13 +493,66 @@ type ArenaLimits {
   txHash: String!
 }
 
-# A price-oracle (re)wiring: MempireCards.OracleChanged or MarketMeta.OracleChanged.
-type OracleChange {
+# Contract (re)wiring, one row per event: MempireCards.CoinFeedChanged (a
+# fighter moved to another Chainlink feed proxy), MarketMeta.CardsChanged,
+# MempireArena.EntryGatewayChanged (the CCIP gateway allowed to seat players)
+# and MempireCCIPGateway.RemoteEntrySet (a source chain allowed or removed).
+type AdminChange {
   id: ID! # txHash-logIndex
-  contract: String! # "MempireCards" | "MarketMeta"
-  oracle: String!
-  cards: String # MarketMeta only: the cards contract it reads coins from
+  contract: String! # "MempireCards" | "MarketMeta" | "MempireArena" | "MempireCCIPGateway"
+  change: String! @index # the event name
+  address: String! # the new feed / cards contract / entry gateway / remote sender
+  coinId: Int # CoinFeedChanged only
+  selector: BigInt # RemoteEntrySet only: the CCIP chain selector
+  cctpDomain: Int # RemoteEntrySet only
   timestamp: Int! @index
   blockNumber: Int!
   txHash: String!
+}
+
+# ───────────────────────────────────────────────────────────── cross-chain (CCIP)
+
+# The source chains MempireCCIPGateway accepts (RemoteEntrySet): one
+# MempireRemoteEntry per CCIP chain selector. sender = zero address disallows it.
+type CCIPSource {
+  id: ID! # CCIP chain selector, decimal
+  selector: BigInt!
+  sender: String! # MempireRemoteEntry on that chain
+  cctpDomain: Int! # CCTP domain of that chain (Ethereum 0, Base 6)
+  enabled: Boolean!
+  changes: Int!
+  updatedAt: Int!
+  txHash: String!
+}
+
+# One CCIP message from MempireRemoteEntry (Base / Ethereum) handled by
+# MempireCCIPGateway on Arc. "CCTP moves the dollars, CCIP carries the
+# instruction": ENTER seats the player in a match with their own Arc USDC and
+# cards; CASH_OUT burns their Arc USDC with CCTP back to the source chain.
+# Query by player, newest first. A message that failed and was retried goes
+# Failed → Recovered (the Entered / CashedOut of the retry fills match/amount).
+type CrossChainMessage @index(fields: ["player", ["createdAt", "DESC"]]) {
+  id: ID! # CCIP messageId (bytes32 hex, lowercase)
+  status: CrossChainStatus! @index
+  action: CrossChainAction!
+  player: String # lowercase address (the sender on the source chain); null only if a failed message's data is undecodable
+  # ENTER
+  matchId: BigInt # the match opened / joined (for a failed ENTER: the match it tried to join, null for a create)
+  match: Match
+  created: Boolean # true = opened a new match, false = joined one
+  # CASH_OUT
+  amount: BigInt # USDC, 6 dp
+  cctpDomain: Int # CCTP domain the USDC was burned to (Ethereum 0, Base 6)
+  # From MessageFailed (Entered / CashedOut do not carry the source chain).
+  sourceChainSelector: BigInt
+  sender: String # MempireRemoteEntry on the source chain
+  failData: String # the message data, hex — retryFailedMessage needs it back exactly
+  failReason: String # revert data, hex
+  createdAt: Int!
+  updatedAt: Int!
+  completedAt: Int # when Entered / CashedOut ran
+  failedAt: Int
+  recoveredAt: Int
+  txHash: String! # latest transaction touching the message
+  failedTxHash: String
 }

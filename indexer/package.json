@@ -9,6 +9,8 @@
     "sync:local": "node scripts/sync-addresses.mjs --chain 31337",
     "codegen": "envio codegen",
     "codegen:mainnet": "envio codegen --config config.mainnet.yaml",
+    "codegen:local": "envio codegen --config config.local.yaml",
+    "codegen:all": "pnpm codegen:mainnet && pnpm codegen:local && pnpm codegen",
     "typecheck": "tsc --noEmit",
     "dev": "envio dev",
     "start": "envio start",

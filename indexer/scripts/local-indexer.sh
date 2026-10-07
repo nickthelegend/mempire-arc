@@ -68,9 +68,13 @@ up() {
   # nonce) on a fresh fork, so the start block is checked too.
   local dep="$ROOT/shared/deployments/31337.json" key addr
   [ -f "$dep" ] || { echo "$dep is missing — deploy to the fork first (scripts/local-up.sh)"; exit 1; }
-  for key in cards arena marketMeta startBlock; do
-    addr=$(node -e "process.stdout.write(String(require('$dep').$key))")
-    if ! grep -q "$addr" "$HERE/$CONFIG"; then
+  for key in cards arena marketMeta ccipGateway startBlock; do
+    addr=$(node -e "process.stdout.write(String(require('$dep').$key ?? ''))")
+    # The CCIP gateway is optional (no CCIP router on the fork): nothing to match.
+    if [ "$key" = ccipGateway ] && { [ -z "$addr" ] || [ "$addr" = 0x0000000000000000000000000000000000000000 ]; }; then
+      continue
+    fi
+    if ! grep -qi "$addr" "$HERE/$CONFIG"; then
       echo "config.local.yaml is behind $dep — syncing"
       (cd "$HERE" && node scripts/sync-addresses.mjs --chain 31337 --config "$CONFIG")
       break

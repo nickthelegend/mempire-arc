@@ -2,6 +2,7 @@
 //   pnpm codegen && pnpm test
 import { describe, it } from "vitest";
 import { createTestIndexer, type Address } from "envio";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 const ALICE: Address = "0x000000000000000000000000000000000000a11c";
 const BOB: Address = "0x0000000000000000000000000000000000000b0b";
@@ -74,7 +75,7 @@ const metaPosted = (epoch: number, coinIds: number[], bps: number[]) => ({
   params: { epoch: BigInt(epoch), coinIds: coinIds.map(BigInt), bps: bps.map(BigInt) },
 });
 
-/** MarketMeta.MetaSource: 0 = Chainlink CRE, 1 = signed-oracle momentum (postFromOracle). */
+/** MarketMeta.MetaSource: 0 = Chainlink CRE, 1 = Chainlink Data Feeds momentum (postFromFeeds). */
 const metaSource = (epoch: number, source: number, poster: Address) => ({
   contract: "MarketMeta" as const,
   event: "MetaSource" as const,
@@ -145,8 +146,8 @@ const voided = (matchId: number, disputed: boolean) => ({
 /** Alice holds cards 1–8 (coins 0–7); Bob holds cards 9–16 (coins 4–11). Coins 4–7 sit in both decks. */
 const ALICE_DECK = [1, 2, 3, 4, 5, 6, 7, 8];
 const BOB_DECK = [9, 10, 11, 12, 13, 14, 15, 16];
-// Fighter tickers in shared/roster.json order (coin 3 is the MON fighter — a roster coin, not a chain token).
-const TICKERS = ["BTC", "ETH", "SOL", "MON", "BNB", "XRP", "DOGE", "AVAX", "LINK", "SHIB", "UNI", "ADA"];
+// The first twelve fighters in shared/roster.json order (Chainlink Data Feeds on Arc).
+const TICKERS = ["BTC", "ETH", "SOL", "BNB", "XRP", "AVAX", "TRX", "BCH", "HYPE", "LINK", "UNI", "AAVE"];
 
 function setupRosterAndDecks(tx: ReturnType<typeof chainClock>) {
   return [
@@ -171,14 +172,14 @@ describe("match lifecycle", () => {
         [CHAIN]: {
           simulate: [
             ...setupRosterAndDecks(tx),
-            // Epoch 1: BTC (coin 0) buffed, LINK (coin 8) nerfed.
+            // Epoch 1: BTC (coin 0) buffed, HYPE (coin 8) nerfed.
             ...tx([metaPosted(1, [0, 8], [1200, -900])]),
             ...tx([createMatch(1, ALICE, 1, stake, ALICE_DECK)]),
             ...tx([joinMatch(1, BOB, BOB_DECK, 1, 1_760_000_600)], 5),
             ...tx([played(1, 0, 40, 0, -3, 7)]), // Alice drops card 1 → BTC
-            ...tx([played(1, 1, 55, 2, 4, -6)]), // Bob drops card 11 → coin 6 (DOGE)
+            ...tx([played(1, 1, 55, 2, 4, -6)]), // Bob drops card 11 → coin 6 (TRX)
             ...tx([checkpoint(1, 0, 100, 0xabcdefn)]),
-            ...tx([played(1, 0, 120, 4, 0, 2)]), // Alice drops card 5 → coin 4 (BNB)
+            ...tx([played(1, 0, 120, 4, 0, 2)]), // Alice drops card 5 → coin 4 (XRP)
             ...tx([claimed(1, 0, 0)], 180),
             // The second claim settles in the same transaction: Claimed → MatchSettled → WinRewarded → ChestGranted.
             ...tx([
@@ -571,7 +572,7 @@ describe("market meta", () => {
             ...tx([registerCoin(0, "BTC"), registerCoin(1, "ETH")]),
             // onReport: MetaPosted, then MetaSource(CRE) in the same tx.
             ...tx([metaPosted(10, [0, 1], [400, -200]), metaSource(10, 0, FORWARDER)]),
-            // postFromOracle, ten minutes later.
+            // postFromFeeds, ten minutes later.
             ...tx([metaPosted(11, [0, 1], [-1500, 900]), metaSource(11, 1, KEEPER)], 600),
             // A MetaSource seen before its MetaPosted still ends up on the full row.
             ...tx([metaSource(12, 1, KEEPER), metaPosted(12, [1], [50])], 600),
@@ -591,19 +592,19 @@ describe("market meta", () => {
       400,
     ]);
     t.expect([e11.source, e11.sourceCode, e11.poster, e11.minBps, e11.topCoin_id]).toEqual([
-      "OracleMomentum",
+      "ChainlinkFeeds",
       1,
       KEEPER.toLowerCase(),
       -1500,
       "1",
     ]);
-    t.expect([e12.source, e12.coinCount, e12.maxBps, e12.topCoin_id]).toEqual(["OracleMomentum", 1, 50, "1"]);
+    t.expect([e12.source, e12.coinCount, e12.maxBps, e12.topCoin_id]).toEqual(["ChainlinkFeeds", 1, 50, "1"]);
     t.expect((await indexer.Coin.getOrThrow("1")).currentModifierBps).toBe(50);
     t.expect((await indexer.Totals.getOrThrow("global")).currentEpoch).toBe(12n);
   });
 });
 
-describe("Arc port: held payouts, arena limits, oracle wiring", () => {
+describe("Arc port: held payouts, arena limits, contract wiring", () => {
   it("PayoutHeld credits the player's heldUsdc; a refused rake to a non-player is logged only", async (t) => {
     const indexer = createTestIndexer();
     const tx = chainClock();
@@ -652,25 +653,255 @@ describe("Arc port: held payouts, arena limits, oracle wiring", () => {
     t.expect((await indexer.ArenaLimits.getAll()).length).toBe(1);
   });
 
-  it("OracleChanged on MempireCards and MarketMeta is logged per contract", async (t) => {
+  it("EntryGatewayChanged and MarketMeta.CardsChanged are logged as AdminChange rows", async (t) => {
     const indexer = createTestIndexer();
     const tx = chainClock();
-    const ORACLE: Address = "0x0000000000000000000000000000000000007ac1";
-    const CARDS: Address = "0x000000000000000000000000000000000000ca5d";
+    const GATEWAY: Address = "0x000000000000000000000000000000000000ccc1";
+    const CARDS: Address = "0x000000000000000000000000000000000000CA5D";
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...tx([{ contract: "MarketMeta" as const, event: "CardsChanged" as const, params: { cards: CARDS } }]),
+            ...tx([{ contract: "MempireArena" as const, event: "EntryGatewayChanged" as const, params: { gateway: GATEWAY } }]),
+          ],
+        },
+      },
+    });
+    const rows = (await indexer.AdminChange.getAll()).sort((a, b) => a.timestamp - b.timestamp);
+    t.expect(rows.map((r) => [r.contract, r.change, r.address, r.coinId])).toEqual([
+      ["MarketMeta", "CardsChanged", CARDS.toLowerCase(), undefined],
+      ["MempireArena", "EntryGatewayChanged", GATEWAY, undefined],
+    ]);
+  });
+});
+
+describe("Chainlink Data Feeds roster", () => {
+  /** The real roster feed ids: keccak256 of the Chainlink pair. */
+  const BTC_FEED_ID: Address = "0x0e3e290fbc572c3c2d1656bd757b05413d2fc62474d95064641dcabee325eb93";
+  const LINK_FEED_ID: Address = "0xaee369cb2f1f19ec8857a81c8ffed809ac5b13ee0990d33f399c5122fd601712";
+
+  it("CoinRegistered fills name, kind, pair and decimals from shared/roster.json by feed id", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
     await indexer.process({
       chains: {
         [CHAIN]: {
           simulate: tx([
-            { contract: "MempireCards" as const, event: "OracleChanged" as const, params: { oracle: ORACLE } },
-            { contract: "MarketMeta" as const, event: "OracleChanged" as const, params: { oracle: ORACLE, cards: CARDS } },
+            // Registered out of roster order: the feed id, not the coinId, finds the row.
+            { contract: "MempireCards" as const, event: "CoinRegistered" as const, params: { coinId: 0n, feedId: LINK_FEED_ID, archetype: 2n, ticker: "LINK" } },
+            { contract: "MempireCards" as const, event: "CoinRegistered" as const, params: { coinId: 1n, feedId: BTC_FEED_ID, archetype: 1n, ticker: "BTC" } },
           ]),
         },
       },
     });
-    const rows = (await indexer.OracleChange.getAll()).sort((a, b) => a.contract.localeCompare(b.contract));
-    t.expect(rows.map((r) => [r.contract, r.oracle, r.cards])).toEqual([
-      ["MarketMeta", ORACLE, CARDS],
-      ["MempireCards", ORACLE, undefined],
+    const link = await indexer.Coin.getOrThrow("0");
+    const btc = await indexer.Coin.getOrThrow("1");
+    t.expect([link.ticker, link.name, link.kind, link.pair, link.feedDecimals, link.feedId]).toEqual([
+      "LINK", "Chainlink", "defi", "LINK / USD", 8, LINK_FEED_ID,
     ]);
+    t.expect([btc.name, btc.kind, btc.pair]).toEqual(["Bitcoin", "crypto", "BTC / USD"]);
+    // Arc testnet may price through a MirrorAggregator: no feed until CoinFeedChanged.
+    t.expect([btc.feed, btc.feedChanges]).toEqual([undefined, 0]);
+  });
+
+  it("CoinFeedChanged repoints the coin at its new feed proxy and logs an AdminChange", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    const FEED_A: Address = "0x00000000000000000000000000000000000FEED1";
+    const FEED_B: Address = "0x00000000000000000000000000000000000feed2";
+    const feedChanged = (coinId: number, feed: Address) => ({
+      contract: "MempireCards" as const,
+      event: "CoinFeedChanged" as const,
+      params: { coinId: BigInt(coinId), feed },
+    });
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...tx([registerCoin(0, "BTC")]),
+            ...tx([feedChanged(0, FEED_A)]),
+            ...tx([feedChanged(0, FEED_B)], 60),
+          ],
+        },
+      },
+    });
+    const btc = await indexer.Coin.getOrThrow("0");
+    t.expect([btc.feed, btc.feedChanges, btc.registered]).toEqual([FEED_B, 2, true]);
+    const rows = (await indexer.AdminChange.getAll()).sort((a, b) => a.timestamp - b.timestamp);
+    t.expect(rows.map((r) => [r.contract, r.change, r.address, r.coinId])).toEqual([
+      ["MempireCards", "CoinFeedChanged", FEED_A.toLowerCase(), 0],
+      ["MempireCards", "CoinFeedChanged", FEED_B, 0],
+    ]);
+  });
+});
+
+describe("cross-chain play (MempireCCIPGateway)", () => {
+  const BASE_SELECTOR = 15971525489660198786n; // Chainlink CCIP selector for Base
+  const ETH_SELECTOR = 5009297550715157269n; // Ethereum
+  const REMOTE: Address = "0x00000000000000000000000000000000000ba5e1";
+  const MSG = (n: number): Address => `0x${n.toString(16).padStart(64, "c")}`;
+  const ENTER = 1;
+  const CASH_OUT = 2;
+
+  /** The message data MempireRemoteEntry sends: abi.encode(uint8 action, address player, bytes body). */
+  const enterData = (player: Address, matchId: bigint) =>
+    encodeAbiParameters(parseAbiParameters("uint8, address, bytes"), [
+      ENTER,
+      player,
+      encodeAbiParameters(
+        parseAbiParameters("(uint64 matchId, uint8 tier, uint256[] cardIds, address session, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s)"),
+        [{ matchId, tier: 0, cardIds: [1n, 2n, 3n], session: SESSION_A, permitDeadline: 1_760_003_600n, v: 27, r: HASH(1), s: HASH(2) }],
+      ),
+    ]);
+  const cashOutData = (player: Address, amount: bigint) =>
+    encodeAbiParameters(parseAbiParameters("uint8, address, bytes"), [
+      CASH_OUT,
+      player,
+      encodeAbiParameters(
+        parseAbiParameters("(uint256 amount, uint256 maxFee, uint32 minFinality, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s)"),
+        [{ amount, maxFee: 1_000n, minFinality: 1000, permitDeadline: 0n, v: 0, r: HASH(3), s: HASH(4) }],
+      ),
+    ]);
+
+  const entered = (id: Address, player: Address, matchId: number, created: boolean) => ({
+    contract: "MempireCCIPGateway" as const,
+    event: "Entered" as const,
+    params: { messageId: id, player, matchId: BigInt(matchId), created },
+  });
+  const cashedOut = (id: Address, player: Address, amount: bigint, domain: number) => ({
+    contract: "MempireCCIPGateway" as const,
+    event: "CashedOut" as const,
+    params: { messageId: id, player, amount, domain: BigInt(domain) },
+  });
+  const failed = (id: Address, selector: bigint, data: Address, reason: Address = "0x4e487b71") => ({
+    contract: "MempireCCIPGateway" as const,
+    event: "MessageFailed" as const,
+    params: {
+      messageId: id,
+      sourceChainSelector: selector,
+      sender: encodeAbiParameters(parseAbiParameters("address"), [REMOTE]),
+      data,
+      reason,
+    },
+  });
+  const recovered = (id: Address) => ({
+    contract: "MempireCCIPGateway" as const,
+    event: "MessageRecovered" as const,
+    params: { messageId: id },
+  });
+  const remoteEntrySet = (selector: bigint, sender: Address, cctpDomain: number) => ({
+    contract: "MempireCCIPGateway" as const,
+    event: "RemoteEntrySet" as const,
+    params: { selector, sender, cctpDomain: BigInt(cctpDomain) },
+  });
+
+  it("Entered and CashedOut record a delivered ENTER and CASH_OUT per player", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...setupRosterAndDecks(tx),
+            // The gateway's createMatchFor: the arena logs MatchCreated, then the gateway Entered.
+            ...tx([createMatch(1, ALICE, 0, USD, ALICE_DECK), entered(MSG(1), ALICE, 1, true)]),
+            ...tx([joinMatch(1, BOB, BOB_DECK, 0, 1_760_000_900), entered(MSG(2), BOB, 1, false)], 30),
+            ...tx([cashedOut(MSG(3), ALICE, 3n * USD / 2n, 6)], 600),
+          ],
+        },
+      },
+    });
+
+    const create = await indexer.CrossChainMessage.getOrThrow(MSG(1));
+    t.expect([create.status, create.action, create.player, create.matchId, create.match_id, create.created]).toEqual([
+      "Entered", "Enter", ALICE, 1n, "1", true,
+    ]);
+    const join = await indexer.CrossChainMessage.getOrThrow(MSG(2));
+    t.expect([join.status, join.player, join.created, join.completedAt]).toEqual(["Entered", BOB, false, join.createdAt]);
+    const cash = await indexer.CrossChainMessage.getOrThrow(MSG(3));
+    t.expect([cash.status, cash.action, cash.player, cash.amount, cash.cctpDomain, cash.matchId]).toEqual([
+      "CashedOut", "CashOut", ALICE, 3n * USD / 2n, 6, undefined,
+    ]);
+    // The arena's own events still built the match.
+    const match = await indexer.Match.getOrThrow("1");
+    t.expect([match.state, match.player0_id, match.player1_id]).toEqual(["Active", ALICE, BOB]);
+  });
+
+  it("MessageFailed keeps the decoded message for retry; a successful retry ends Recovered", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    const joinData = enterData(BOB, 7n);
+    const cashData = cashOutData(ALICE, 2n * USD);
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            // ENTER (join match 7) arrives before Bob's CCTP mint: it reverts and is stored.
+            ...tx([failed(MSG(10), BASE_SELECTOR, joinData)]),
+            // CASH_OUT without the permit: fails and stays failed.
+            ...tx([failed(MSG(11), ETH_SELECTOR, cashData)], 30),
+            // retryFailedMessage: the arena seats Bob, the gateway logs Entered then MessageRecovered.
+            ...tx([entered(MSG(10), BOB, 7, false), recovered(MSG(10))], 900),
+          ],
+        },
+      },
+    });
+
+    const retried = await indexer.CrossChainMessage.getOrThrow(MSG(10));
+    t.expect([
+      retried.status, retried.action, retried.player, retried.matchId, retried.created,
+      retried.sourceChainSelector, retried.sender, retried.failData, retried.failReason,
+    ]).toEqual(["Recovered", "Enter", BOB, 7n, false, BASE_SELECTOR, REMOTE, joinData, "0x4e487b71"]);
+    t.expect(retried.failedAt).toBeLessThan(retried.recoveredAt!);
+    t.expect(retried.completedAt).toBe(retried.recoveredAt);
+    t.expect(retried.failedTxHash).not.toBe(retried.txHash);
+
+    const stuck = await indexer.CrossChainMessage.getOrThrow(MSG(11));
+    t.expect([stuck.status, stuck.action, stuck.player, stuck.amount, stuck.sourceChainSelector, stuck.completedAt]).toEqual([
+      "Failed", "CashOut", ALICE, 2n * USD, ETH_SELECTOR, undefined,
+    ]);
+  });
+
+  it("a failed ENTER that opens a new match (matchId 0) has no match yet; garbage data decodes as Unknown", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...tx([failed(MSG(20), BASE_SELECTOR, enterData(ALICE, 0n))]),
+            ...tx([failed(MSG(21), BASE_SELECTOR, "0xdeadbeef")]),
+          ],
+        },
+      },
+    });
+    const create = await indexer.CrossChainMessage.getOrThrow(MSG(20));
+    t.expect([create.action, create.player, create.matchId, create.match_id]).toEqual(["Enter", ALICE, undefined, undefined]);
+    const junk = await indexer.CrossChainMessage.getOrThrow(MSG(21));
+    t.expect([junk.status, junk.action, junk.player]).toEqual(["Failed", "Unknown", undefined]);
+  });
+
+  it("RemoteEntrySet keeps one CCIPSource per selector (zero sender disallows it) and logs AdminChange", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...tx([remoteEntrySet(BASE_SELECTOR, REMOTE, 6), remoteEntrySet(ETH_SELECTOR, REMOTE, 0)]),
+            ...tx([remoteEntrySet(ETH_SELECTOR, ZERO, 0)], 60),
+          ],
+        },
+      },
+    });
+    const base = await indexer.CCIPSource.getOrThrow(BASE_SELECTOR.toString());
+    const eth = await indexer.CCIPSource.getOrThrow(ETH_SELECTOR.toString());
+    t.expect([base.sender, base.cctpDomain, base.enabled, base.changes]).toEqual([REMOTE, 6, true, 1]);
+    t.expect([eth.sender, eth.cctpDomain, eth.enabled, eth.changes]).toEqual([ZERO, 0, false, 2]);
+    const rows = await indexer.AdminChange.getAll();
+    t.expect(rows.length).toBe(3);
+    t.expect(rows.every((r) => r.contract === "MempireCCIPGateway" && r.change === "RemoteEntrySet")).toBe(true);
+    t.expect(rows.map((r) => r.selector).sort()).toEqual([BASE_SELECTOR, ETH_SELECTOR, ETH_SELECTOR].sort());
   });
 });

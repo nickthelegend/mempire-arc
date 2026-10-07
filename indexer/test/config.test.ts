@@ -34,7 +34,7 @@ describe("configs", () => {
     t.expect(chainIds(mainnet)).toEqual([5042]);
     for (const yaml of [testnet, mainnet]) {
       t.expect(yaml).not.toMatch(/^\s+rpc:/m);
-      t.expect(yaml.match(/address: "0x[0-9a-fA-F]{40}"/g)?.length).toBe(3);
+      t.expect(yaml.match(/address: "0x[0-9a-fA-F]{40}"/g)?.length).toBe(4);
     }
   });
 
@@ -44,12 +44,37 @@ describe("configs", () => {
     t.expect(local).toMatch(/url: http:\/\/127\.0\.0\.1:8710\n\s+for: sync/);
     // Addresses are checked against shared/deployments/31337.json at run time by
     // scripts/local-indexer.sh, since a redeploy on a live fork changes them.
-    t.expect(local.match(/address: "0x[0-9a-fA-F]{40}"/g)?.length).toBe(3);
+    t.expect(local.match(/address: "0x[0-9a-fA-F]{40}"/g)?.length).toBe(4);
   });
 
-  it("indexes the Arc-port events (oracle wiring, arena limits) and nothing Monad-era", (t) => {
+  it("indexes the Chainlink-era events (feeds, CCIP gateway, arena limits) and nothing oracle- or Monad-era", (t) => {
     const testnet = read("config.yaml");
-    for (const e of ["LimitsChanged", "OracleChanged"]) t.expect(testnet).toContain(`- event: ${e}`);
-    t.expect(testnet).not.toMatch(/PythChanged|Monad|MON\b|AUSD/);
+    for (const e of [
+      "LimitsChanged",
+      "EntryGatewayChanged",
+      "CoinFeedChanged",
+      "CardsChanged",
+      "Entered",
+      "CashedOut",
+      "MessageFailed",
+      "MessageRecovered",
+      "RemoteEntrySet",
+    ]) {
+      t.expect(testnet).toContain(`- event: ${e}`);
+    }
+    t.expect(testnet).toContain("- name: MempireCCIPGateway");
+    t.expect(testnet).not.toMatch(/OracleChanged|PythChanged|Monad|MON\b|AUSD/);
+  });
+
+  it("every config event exists in its ABI", (t) => {
+    const testnet = read("config.yaml");
+    const blocks = testnet.split("\nchains:\n")[0]!.split(/\n  - name: /).slice(1);
+    t.expect(blocks.length).toBe(4);
+    for (const block of blocks) {
+      const name = block.split("\n")[0]!.trim();
+      const abi = JSON.parse(read(`abis/${name}.json`)) as { type: string; name?: string }[];
+      const events = new Set(abi.filter((x) => x.type === "event").map((x) => x.name));
+      for (const m of block.matchAll(/- event: (\w+)/g)) t.expect(events.has(m[1]), `${name}.${m[1]}`).toBe(true);
+    }
   });
 });

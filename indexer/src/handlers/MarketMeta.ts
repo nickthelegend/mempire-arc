@@ -1,6 +1,7 @@
 // MarketMeta: one bounded (±15%) modifier per fighter each epoch, written by a
-// Chainlink CRE report (onReport, Arc testnet) or derived from signed-oracle
-// momentum (postFromOracle — the only writer on Arc mainnet, where CRE does not run).
+// Chainlink CRE report (onReport, Arc testnet) or computed on chain from each
+// fighter's 24 h move on its Chainlink Data Feed (postFromFeeds — the only
+// writer on Arc mainnet, where CRE does not run).
 // A coin left out of an epoch's report reads 0 on chain for that epoch, so
 // every known coin's current modifier is rewritten, not just the ones in the
 // report. MetaSource follows MetaPosted in the same transaction and records
@@ -8,8 +9,8 @@
 import { indexer, type MarketEpoch } from "envio";
 import { addr, logId, meta, totals, updateCoin } from "../lib/common.js";
 
-/** MarketMeta.SOURCE_CRE = 0, SOURCE_ORACLE = 1. */
-export const META_SOURCES = ["ChainlinkCRE", "OracleMomentum"] as const;
+/** MarketMeta.SOURCE_CRE = 0, SOURCE_FEEDS = 1. */
+export const META_SOURCES = ["ChainlinkCRE", "ChainlinkFeeds"] as const;
 
 indexer.onEvent({ contract: "MarketMeta", event: "MetaPosted" }, async ({ event, context }) => {
   const m = meta(event);
@@ -101,13 +102,17 @@ indexer.onEvent({ contract: "MarketMeta", event: "MetaSource" }, async ({ event,
   context.MarketEpoch.set({ ...base, ...sourceFields });
 });
 
-indexer.onEvent({ contract: "MarketMeta", event: "OracleChanged" }, async ({ event, context }) => {
+// setCards(): the cards contract postFromFeeds reads each fighter's feed from.
+indexer.onEvent({ contract: "MarketMeta", event: "CardsChanged" }, async ({ event, context }) => {
   const m = meta(event);
-  context.OracleChange.set({
+  context.AdminChange.set({
     id: logId(m),
     contract: "MarketMeta",
-    oracle: addr(event.params.oracle),
-    cards: addr(event.params.cards),
+    change: "CardsChanged",
+    address: addr(event.params.cards),
+    coinId: undefined,
+    selector: undefined,
+    cctpDomain: undefined,
     timestamp: m.ts,
     blockNumber: m.block,
     txHash: m.tx,
