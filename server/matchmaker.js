@@ -75,7 +75,7 @@ const HASH_WINDOW = 400; // remember this many recent checkpoint ticks per match
  * `coinId` is the roster's numeric id; a short string id is still accepted for
  * decks built from local, unminted cards.
  */
-// A fighter is identified by its Pyth feed id: 0x plus 64 hex digits.
+// A fighter is identified by its feed id (keccak256 of its Chainlink pair): 0x plus 64 hex digits.
 const validCoinId = (id) => (Number.isSafeInteger(id) && id >= 0)
   || (typeof id === 'string' && /^0x[0-9a-fA-F]{64}$/.test(id));
 function validDeck(deck) {

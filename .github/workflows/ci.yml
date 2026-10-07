@@ -1,9 +1,9 @@
 # Every suite that is deterministic on a CI runner.
 #
-# The chain suites (onboarding, settlement, Privy, the end-to-end game) fork
-# live Monad testnet and sign live OKX/CoinGecko quotes, and the browser pass
-# drives the full local stack; they run locally with `./scripts/test-all.sh`
-# and `node app/e2e/browser-pass.mjs` (results in docs/QUALITY.md).
+# The chain suites (onboarding, settlement, the end-to-end game) and the forge
+# fork suites run against an arc-anvil fork of Arc mainnet (Circle's Arc
+# Foundry); they run locally with `./scripts/test-all.sh` (FORK_TESTS=1 for
+# the forge forks).
 name: ci
 
 on:
@@ -22,9 +22,15 @@ jobs:
         with:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: forge test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Chainlink packages (CCIP, Data Feeds, Chainlink Local)
         working-directory: contracts
-        run: forge test
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: forge test (unit; Circle FiatToken at Arc's USDC address, Chainlink Local)
+        working-directory: contracts
+        run: forge test --no-match-path 'test/fork/*'
 
   app:
     runs-on: ubuntu-latest
@@ -35,15 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # npm 11: npm 10 rejects the optional TypeScript-5 peers that
-          # Privy/wagmi pull in (the app is on TypeScript 6). engines says >=24.
           node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
-      # `npm install`, not `npm ci`: the lockfile is generated on macOS, and npm
-      # on Linux places a few optional peers of wagmi/porto/WalletConnect
-      # differently, which `ci` rejects as "out of sync". `install` still
-      # follows the lockfile; Vercel's default install behaves the same way.
       - run: npm install --no-audit --no-fund
       - name: typecheck
         run: npx tsc -b
@@ -52,7 +52,7 @@ jobs:
       - name: lint
         run: npx oxlint
       - name: production build
-        run: VITE_CHAIN_ID=10143 npx vite build
+        run: VITE_CHAIN_ID=5042002 ALLOW_NO_DEPLOYMENT=1 npm run build
 
   relay:
     runs-on: ubuntu-latest
@@ -78,6 +78,8 @@ jobs:
         run: node test-ai.mjs
       - name: persistence across a restart (real MongoDB)
         run: node test-persistence.mjs
+      - name: Circle Gateway API + ERC-8004 registries (Arc testnet, live)
+        run: node test-interop.mjs
 
   cre:
     runs-on: ubuntu-latest

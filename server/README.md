@@ -1,15 +1,19 @@
-# Mempire relay (Monad)
+# Mempire relay (Arc)
 
 Player state, the trophy ladder, clans, the PvP matchmaker, and the thin chain
-layer the game needs a server for: onboarding new wallets, proxying Pyth
-prices, serving card metadata, and verifying arena payouts before they reach the
-leaderboard.
+layer the game needs a server for on Arc: onboarding new wallets, serving
+Chainlink prices and card metadata, posting the Chainlink-derived market meta,
+relaying Circle Gateway mints, finishing CCIP instructions whose USDC arrived
+late, reading the AI opponent's ERC-8004 record, and verifying arena payouts
+before they reach the leaderboard.
 
 It stores results; the client owns game logic and money moves on chain, never
 here. The only key this process signs with is the **relayer's**, which can mint
-a once-per-address starter deck and pay a testnet drip — nothing more. A
-compromised client cannot do anything through this API it could not already do
-locally.
+a once-per-address starter deck, pay a testnet drip, post the meta (whose
+numbers the contract computes), submit Gateway mints Circle attested, retry
+stored CCIP messages (permissionless) and, on testnet, copy Chainlink rounds
+into the feed mirrors. A compromised client cannot do anything through this API
+it could not already do locally.
 
 ## Run it
 
@@ -19,33 +23,29 @@ npm run sync-shared        # vendor ../shared (roster, ABIs, deployments) into .
 npm run dev                # reads .env; see .env.example
 ```
 
-No `MONGODB_URI` is fine: the relay boots on an in-memory store
-(`memstore.js`), says so in its log and in `/api/health`, and forgets everything
-on restart. Set `MONGODB_URI` for any deployment. `docker compose up --build`
-brings a Mongo alongside the API.
-
-The relay is deployed from this directory alone, so it cannot read `../shared`
-at runtime. `npm run sync-shared` copies `roster.json`, `abi/` and
-`deployments/` into `server/shared/`; rerun it and commit the result after any
-contract redeploy or roster rebuild.
+No `MONGODB_URI` is fine locally: the relay boots on an in-memory store and says
+so in `/api/health`. Set it for any deployment. The relay is deployed from this
+directory alone (Railway: `railway.json` + `Dockerfile`, one instance — the
+matchmaker is in-process state), so `npm run sync-shared` vendors `roster.json`,
+`abi/` and `deployments/` into `server/shared/`; rerun and commit after a deploy.
 
 ## Configuration
 
+Every variable is documented in [`.env.example`](.env.example); the hosted set is
+in [../MAINNET.md](../MAINNET.md#relay-railway). The important ones:
+
 | Variable | Default | Notes |
 |---|---|---|
-| `CHAIN_ID` | `10143` | Picks `shared/deployments/<CHAIN_ID>.json`. With no file, chain routes answer 503. `31337` = local anvil. |
-| `RPC_URL` | `https://testnet-rpc.monad.xyz` | |
-| `RELAYER_PRIVATE_KEY` | unset | Must be the address `MempireCards.relayer()` names. **Never the deployer/owner key** — boot refuses a key that owns a game contract. Unset = onboarding 503. |
-| `AUSD_FAUCET` | unset | Agora testnet faucet (`0xd236c18D274E54FAccC3dd9DDA4b27965a73ee6C`), `requestFunds(address)`. Test chains only. |
-| `ONBOARD_MON_DRIP` | `0.05` | MON sent to a new address holding less than this. Test chains (10143, 31337) only, whatever this says. |
-| `PYTH_API_KEY` | unset | Hermes has required a key since 2026-08-26. Unset = `/api/pyth/update` 503s and stocks drop out of `/api/coins`. |
-| `PYTH_HERMES_URL` | `https://pyth.dourolabs.app/hermes` | |
-| `COINGECKO_API_KEY` | unset | Optional demo key; the keyless tier works but rate-limits harder. |
-| `PUBLIC_APP_URL` | `https://mempire.fun` | Base for NFT images: `<url>/art/card_<ticker>.png`. |
-| `MONGODB_URI` | unset | Unset = in-memory store. |
-| `MONGODB_DB` | `mempire` | |
-| `CORS_ORIGIN` | unset (open) | Comma-separated origins. **Set this in production.** |
-| `PORT` | `8787` | |
+| `CHAIN_ID` | `5042002` | `5042` Arc mainnet, `5042002` Arc testnet, `31337` the local Arc fork. Picks `shared/deployments/<CHAIN_ID>.json`. |
+| `RPC_URL` | Arc's public RPC for the chain | |
+| `RELAYER_PRIVATE_KEY` | unset | Must be `MempireCards.relayer()`. **Never the deployer/owner** — boot refuses a key that owns a game contract. Fund with USDC (gas). |
+| `ONBOARD_USDC_DRIP` | `2` | Test chains only, whatever this says. |
+| `ONBOARD_MAINNET_MIN_USDC` | `1` | Mainnet: the free starter deck needs this much USDC held (sybil brake on relayer gas). |
+| `META_KEEPER` / `META_KEEPER_EVERY` | on for mainnet/forks / `6` | `MarketMeta.postFromFeeds` cadence. |
+| `AI_AGENT_ID` | unset | ERC-8004 id of the AI opponent (`scripts/register-agent.mjs`). |
+| `GATEWAY_MAX_TOPUP` | `100` | Mainnet cap per relayed Gateway mint, USDC. |
+| `MOONSHOT_API_KEY` | unset | Kimi strategist for the AI opponent. |
+| `MONGODB_URI`, `CORS_ORIGIN`, `PUBLIC_APP_URL`, `PUBLIC_API_URL`, `PORT` | | |
 
 ## Auth
 
@@ -72,130 +72,44 @@ a 400.
 
 ## Endpoints
 
-**Health**
-- `GET /api/health` — pings the store and reports `{ db, persistent, chain: { chainId, rpc, deployment, relayer } }`.
+**Health** — `GET /api/health`: store, chain id, relayer, `prices` (`chainlink` or testnet `mirror`), CCIP gateway, and the keeper / mirror / ccip-watch status.
 
-**Onboarding** (relayer-signed transactions, one serialized queue)
-- `POST /api/onboard` — signed action `onboard`, body `{ address, ts, signature }`.
-  Once per address (plus a per-IP limit). Mints the starter deck if
-  `starterClaimed(address)` is false, requests AUSD from `AUSD_FAUCET`, and
-  drips MON if the address holds less than the drip. Responds
-  `{ ok, starter: 'minted'|'already'|'failed', ausd: 'sent'|'queued'|'unconfigured'|'failed', mon: 'sent'|'skipped'|'unconfigured'|'failed', txs, cardIds, starterCoins }`.
-  `ausd: 'queued'` means the faucet's 60 s global cooldown refused it and the
-  relay will retry. A second onboard is `409`; one whose earlier attempt left a
-  step `failed` retries only that step.
-- `GET /api/onboard/:address` — `{ starterClaimed, mon, ausd, claim }`.
+**Onboarding** — `POST /api/onboard` (signed `onboard`): mints the eight-fighter starter deck once per address and, on test chains, drips 2 USDC (natively — one balance pays gas and funds the stake). On mainnet the deck needs `ONBOARD_MAINNET_MIN_USDC` held and there is no drip. `GET /api/onboard/:address` → `{ starterClaimed, usdc: { balance, units, wei }, claim }`.
 
-The starter deck is eight distinct coins, the same for everyone: the
-best-known coin of each of the six archetypes first, then the best-known
-remainder (currently BTC SOL MON PEPE NVDA SHIB ETH DOGE). Archetype =
-`keccak256(feedId) % 6`, computed in JS and checked against
-`MempireCards.roster()` and `archetypeFor` at boot.
+**Prices** — `GET /api/coins`: every fighter at its Chainlink Data Feed answer on Arc (`source: 'chainlink'`, `fresh`, `roundId`, `updatedAt`), with a display-only 24h change (OKX tickers; FX from the feed's own day-ago round).
 
-Every relayer transaction is gas-estimated and sent with a 15% margin — Monad
-charges for the gas limit, not the gas used.
+**Market meta** — the keeper calls `MarketMeta.postFromFeeds(coinIds, dayAgoRounds)`; the contract computes the moves.
 
-**Prices**
-- `GET /api/pyth/update?coinIds=0,26` — `{ updateData: ['0x…'], prices: [{ coinId, price, expo, publishTime }] }`
-  from Hermes, with our key, cached ~2 s. `price` is Pyth's raw integer as a
-  string. 503 without `PYTH_API_KEY`.
-- `GET /api/coins` — `[{ coinId, ticker, priceUsd, change24h }]` for the roster.
-  Crypto and memecoins from CoinGecko (60 s cache, last good on failure),
-  stocks from Pyth when keyed (`change24h: null` — Pyth's latest price has no
-  24-hour change). A coin nobody quoted is omitted, never estimated.
-  `x-data-age-seconds` says how old the list is.
+**Circle Gateway** — `GET /api/gateway/config`, `GET /api/gateway/balances/:address` (the unified USDC balance per chain, from Circle), `POST /api/gateway/mint` (`{ requests: [{ burnIntent, signature }] }` → Circle `/transfer` → simulate → `GatewayMinter.gatewayMint` on Arc). Refuses intents that mint to anyone but the depositor or anywhere but Arc.
 
-**Card metadata**
-- `GET /nft/:id` — ERC-721 metadata read from chain (`tokenURI` is
-  `baseURI + id`): `$NVDA · Lv 3`, image, and ticker / kind / level /
-  archetype (Tank, Swarm, Ranged, Splash, Support, Spell) attributes, plus the
-  mint price at its Pyth exponent when non-zero. 404 for burned or unminted ids.
+**ERC-8004** — `GET /agents/mempire-ai.json` (the agent card), `GET /api/agent` (identity owner, URI, raters, score for tag `mempire.match`).
 
-**Player state**
-- `GET /api/player/:address` · `PUT /api/player/:address` (`player.put`)
-- `POST /api/match/:address` (`match.post`) — records a match. An escrowed one
-  names its arena `matchId`; the relay reads `MempireArena.getMatch` and credits
-  the net in the match's own currency. A report before settlement is counted
-  and returns `pending: true`; the retry credits the money, once
-  (`match_credits` claims `${matchId}:${address}` first).
-- `GET /api/leaderboard?currency=MON|AUSD` — top 25 by chain-verified net
-  winnings. Rows carry both `netMon` and `netAusd`; they are never summed.
-- `PUT /api/player` (`player.save`) · `POST /api/player/match` (`player.match`)
+**Card metadata** — `GET /nft/:id`: ERC-721 metadata read from chain, incl. the Chainlink price the card was minted at.
 
-**Ladder**
-- `GET /api/ladder/:address` · `POST /api/ladder/:address` (`ladder.post`) · `GET /api/ladder`
+**Player state, ladder, clans, analytics** — unchanged game APIs: `/api/player/*`, `POST /api/match/:address` (chain-verified USDC credit), `GET /api/leaderboard` (net USDC), `/api/ladder/*`, `/api/clans/*`, `/api/events`, `/api/analytics/*`.
 
-Elo, K=32, scale 400, with league floors. A report must cite the `pairKey` the
-matchmaker sent both seats, and ratings move only once both seats agree.
+**WebSocket** — `/ws`: matchmaking (pools by tier, currency USDC, format, ranked), lockstep input relay, desync referee, and the escrow handshake relay (`chain` messages, never acted on).
 
-**Clans**
-- `GET /api/clans` · `GET /api/clans/:tag` · `GET /api/clans/mine/:address` · `GET /api/clans-top`
-- `POST /api/clans` (`clan.create`) — the server allocates the tag. When this
-  chain has a `$MEMPIRE` token, the body must carry `paymentTx`: a transaction
-  that sent ≥ 250 $MEMPIRE from the founder to `MempireCards.treasury()`,
-  checked by its Transfer logs. One payment, one clan.
-- `POST /api/clans/:tag/{join,leave,role,kick,request,lend,crowns}` (`clan.<verb>`) · `PATCH /api/clans/:tag` (`clan.settings`)
+## Background jobs
 
-**Analytics** — `POST /api/events` (`events`) · `GET /api/analytics/{summary,insights,ops}`.
-In memory mode the aggregates are empty.
-
-**WebSocket** — `/ws` on the same port. Matchmaking, lockstep input relay, and
-the desync referee.
-
-- `queue` `{ address, tier, currency: 'MON'|'AUSD' (default MON), format, ranked, deck, … }`.
-  Pools are split by tier, currency, format and ranked, so stakes always match.
-  Ranked requires the signed `queue` action; an unsigned ranked queue is
-  demoted to casual.
-- `matched` `{ matchId, pairKey, role, seed, startAt, serverNow, inputDelayTicks, format, currency, metaEpoch, opponent }`.
-  The seed is chosen here at pairing for every match, staked or not — the
-  battle starts at `startAt` while the arena create/join is still in flight.
-  `metaEpoch` is `MarketMeta.currentEpoch()`, read once per pairing (cached at
-  most 30 s, 0 if unavailable) so both seats apply identical market modifiers.
-- `chain` `{ stage: 'opened'|'joined'|'failed', onchainMatchId, txHash }` —
-  the escrow handshake, relayed verbatim and never acted on; both clients read
-  `getMatch` themselves.
-- `input`, `tick`, `hash`, `ended`, `cancel` as before.
-
-## Routes removed in the Monad port
-
-`GET/POST /api/faucet` (replaced by `/api/onboard`), the Bags `$MEMPIRE`
-market (`/api/market/*`), and `GET /api/analytics/tvl`. The DexScreener coin
-feed behind `/api/coins` is replaced by the roster feed above.
+| Job | File | What it does |
+|---|---|---|
+| Meta keeper | `keeper.js` | Finds each feed's day-ago round and posts `postFromFeeds`. |
+| Feed mirror (testnet) | `mirror.js` | Copies Arc mainnet Chainlink rounds into the testnet `MirrorAggregator`s. |
+| CCIP watch | `ccip-watch.js` | Reads `MessageFailed` from the gateway and retries once CCTP has minted (simulated first). |
 
 ## Tests
 
-Unit (no server, no chain):
-
 | Command | Covers |
 |---|---|
-| `node test-auth.mjs` | Message text, skew window, malleated/uppercase signatures, address normalisation. |
-| `node test-memstore.mjs` | The in-memory store against the query shapes the routes rely on. |
+| `node test-auth.mjs`, `test-memstore.mjs`, `test-locker.mjs`, `test-ai.mjs` | Units (no chain). |
+| `node test-interop.mjs` | Real Circle Gateway testnet API + real Arc testnet ERC-8004 registries. |
+| `node test-onboard.mjs` | Arc-mainnet fork (arc-anvil): starter deck, 2 USDC drip in both USDC views, Arc fee floor, concurrency, metadata. |
+| `node test-settlement.mjs` | Arc-mainnet fork: a \$1 USDC match staked by permit, exact USDC deltas, chain-verified leaderboard credit. |
+| `node test-e2e.mjs` | Arc-mainnet fork: Chainlink-priced mint, on-chain meta from feed history, a cross-chain ENTER delivered via the real Arc CCIP router address and completed by ccip-watch, a session-key match, chest, merge, timeout refund. |
+| `node test-api.mjs`, `test-pvp.mjs`, `test-clans.mjs`, `test-ladder.mjs` | Against a running relay (`API=…`, `WS=…`). |
 
-Against the local anvil deployment (`anvil` on `127.0.0.1:8611`, `shared/deployments/31337.json`).
-Each starts its own in-memory relay:
-
-| Command | Covers |
-|---|---|
-| `node test-onboard.mjs` | Eight starter cards covering all six archetypes, the MON drip, AUSD queued on faucet refusal, once per address (any letter case), bad/replayed signatures, three concurrent onboards with distinct nonces, estimated gas limits, `/nft/:id`. |
-| `node test-settlement.mjs` | A real MON escrow through the arena: pending before settlement, credited once after, per-currency columns, unseated wallets credited nothing. |
-
-Against a running relay (`API=http://host:port`, `WS=ws://host:port/ws`;
-in-memory is fine, and use a chain without a `$MEMPIRE` deployment so clan
-charters are free):
-
-| Command | Covers |
-|---|---|
-| `node test-api.mjs` | Every route: existence, validation, signatures, response shape, WebSocket upgrade, body-size cap, rate limiting. |
-| `node test-pvp.mjs` | Pairing, seed and `metaEpoch`, input relay, desync referee, forfeits, self-match in any case, currency pools, escrow handshake, ranked signatures. |
-| `node test-clans.mjs` | Clan rules in depth — roles, permissions, membership. |
-| `node test-ladder.mjs` | Elo, league floors, client/server drift guard, pairing-backed reports. |
-| `node test-ai.mjs` | Kimi opponent + commentary, mock mode and against a local fake OpenAI-compatible server. Needs no key. |
-| `node verify-api.mjs` | Status sweep of every route, including that the removed ones stay gone. |
-| `node verify-matchmaker.mjs` | Two same-tier clients pair. |
-
-`spar.mjs` and `spar-escrow.mjs` hold a queue slot for a browser to pair with;
-`spar-escrow.mjs` (`SPAR_PRIVATE_KEY`, an onboarded key) also joins the
-browser's arena match for real.
+The fork suites need Circle's Arc Foundry: `ARC_ANVIL=…/arc-anvil ARC_FORGE=…/forge`. `spar-escrow.mjs` (`SPAR_PRIVATE_KEY`, `SPAR_DELAY_MS`) is a sparring partner that joins a browser's staked match for real.
 
 ## What the container does that the bare process does not
 

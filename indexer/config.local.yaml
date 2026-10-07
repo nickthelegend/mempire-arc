@@ -68,17 +68,17 @@ contracts:
 rollback_on_reorg: false
 chains:
   - id: 31337 # arc-anvil fork of Arc testnet (scripts/local-up.sh)
-    start_block: 0 # TODO: set from shared/deployments/31337.json (startBlock)
+    start_block: 24765333 # from shared/deployments/31337.json (startBlock)
     rpc:
       - url: http://127.0.0.1:8710
         for: sync
         polling_interval: 500
     contracts:
       - name: MempireCards
-        address: "0x00000000000000000000000000000000000c0de1" # TODO: set from shared/deployments/31337.json (cards)
+        address: "0x986766103a56452162574e1629245a798f8152a4" # from shared/deployments/31337.json (cards)
       - name: MempireArena
-        address: "0x00000000000000000000000000000000000c0de2" # TODO: set from shared/deployments/31337.json (arena)
+        address: "0x1c245A18F34F58995ea114E505Dbf2ac3c452993" # from shared/deployments/31337.json (arena)
       - name: MarketMeta
-        address: "0x00000000000000000000000000000000000c0de3" # TODO: set from shared/deployments/31337.json (marketMeta)
+        address: "0x77689Fa48544227F3Fbbf21660564F6966762c34" # from shared/deployments/31337.json (marketMeta)
       - name: MempireCCIPGateway
-        address: "0x00000000000000000000000000000000000c0de4" # TODO: set from shared/deployments/31337.json (ccipGateway)
+        address: "0xCc3D58a4f747550316b5D12480Cf4e57892CD145" # from shared/deployments/31337.json (ccipGateway)

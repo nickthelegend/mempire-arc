@@ -8,7 +8,7 @@ import {
   HASH_EVERY_TICKS, InputEvent, MatchCard, OVERTIME_TICKS, REGULATION_TICKS,
 } from '../src/sim/types';
 
-// The real roster: identity is the Pyth feed id, exactly as on chain.
+// The real roster: identity is the feed id (keccak256 of the Chainlink pair), exactly as on chain.
 import roster from '../../shared/roster.json';
 const COINS: string[] = roster.coins.map((c: { feedId: string }) => c.feedId.toLowerCase());
 

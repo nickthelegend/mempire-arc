@@ -13,7 +13,7 @@ Clash Royale's chrome carrying Mempire's content. A quilted royal-blue field,
 carved wood panels, and fat buttons that physically depress into their own base
 edge. Display type is chunky, uppercase, and heavily outlined. Solana purple and
 teal survive as the energy accent; royal gold still means exactly one thing —
-SOL is moving.
+USDC is moving.
 
 | Role | Token | Rule |
 |---|---|---|
@@ -35,13 +35,13 @@ is visible, and it reads as carelessness rather than variety. Reach for the
 token; if none fits, add one.
 
 **Gold is money, and nothing else.** Deck power, progress bars and gem counts are
-not SOL, so they are blue or the Solana beam. The moment gold decorates
+not money, so they are blue or the Solana beam. The moment gold decorates
 something, it stops meaning anything where it matters.
 
 **Live is not the same as dead.** A secondary control (`ghost`) and a disabled
 one must not share a treatment. They did, which made "Keep fighting" read as
 switched off beside a fully lit "Forfeit" — on the one confirm that costs real
-SOL. Pending is a third state, and it gets a `Spinner`, not just dimming: the row
+USDC. Pending is a third state, and it gets a `Spinner`, not just dimming: the row
 the player tapped must stay distinguishable from the rows they did not.
 
 **Legibility law.** **12px is the floor for every readable string**, enforced in
@@ -64,7 +64,7 @@ swallows the glyph into a lump — which is exactly what the crown score was.
 
 **Bevel law.** Nothing interactive is a flat rectangle. Raised things get a top
 highlight plus a hard base edge; pressed things translate into that edge, and
-every one of them has a hover and a press state — a plate that picks how much SOL
+every one of them has a hover and a press state — a plate that picks how much USDC
 is at risk cannot be the one control with no feedback. Bare glyph buttons are the
 single exception to the bevel, and they earn feedback from `.icon-btn` instead.
 
@@ -95,7 +95,7 @@ metaphor is always literal — crowns, thrones, banners, gilded frames, coins.
 | Royal purple (primary) | `#9945FF` | Interactive: buttons, links, focus, selection. Solana brand purple. |
 | Teal (live) | `#14F195` | Live/online/success states, win numbers, "in battle" pulses. Solana brand teal. |
 | Gradient | `#9945FF → #14F195` | The Solana beam. Primary CTA fills, energy VFX, elixir bar, progress. Always this direction (left→right / bottom→top). |
-| Royal gold | `#F0B90B` (hi `#FFD75E`) | **Money moments only**: pot amounts, stakes, fees, victory, card level pips, crowns. Never decorative elsewhere — gold means SOL is moving. |
+| Royal gold | `#F0B90B` (hi `#FFD75E`) | **Money moments only**: pot amounts, stakes, fees, victory, card level pips, crowns. Never decorative elsewhere — gold means USDC is moving. |
 | Loss red | `#FF4D6D` | Damage, defeat, destructive confirms. Never the accent. |
 | Text | `#F4F1FB` | Primary. |
 | Text-dim | `#8E85A8` | Secondary, labels. |

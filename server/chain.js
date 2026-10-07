@@ -79,7 +79,7 @@ export const ARCHETYPE_NAMES = ['Tank', 'Swarm', 'Ranged', 'Splash', 'Support', 
 
 /**
  * `MempireCards.archetypeFor`, in JS: keccak256 over the 32 raw bytes of the
- * Pyth feed id, mod 6. The contract derives it at registration so nobody can
+ * feed id (keccak256 of the Chainlink pair), mod 6. The contract derives it at registration so nobody can
  * hand a favoured asset a better class; the relay derives it here to choose a
  * starter deck without a round trip per coin, and checks itself against the
  * contract once at boot (see `onboard.js`).
