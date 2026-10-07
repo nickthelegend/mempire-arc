@@ -40,6 +40,13 @@ export const CLAIM_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 USDC
 
 /** The USDC a create/join forwards to the seat's session key. */
 export const sessionGasWei = (): bigint => SESSION_GAS_WEI;
+/**
+ * The same float in ERC-20 USDC units (6 decimals). The arena pulls it with the
+ * stake (one permit) and transfers it to the session key as ERC-20 USDC — which
+ * on Arc *is* the key's gas balance. No msg.value, so the stake can travel
+ * through Arc's Memo tagged with the match id.
+ */
+export const sessionFloatUnits = (): bigint => SESSION_GAS_WEI / 1_000_000_000_000n;
 
 const KEY = (matchId: number) => `mempire_session_${matchId}`;
 const PENDING = 'mempire_session_pending';

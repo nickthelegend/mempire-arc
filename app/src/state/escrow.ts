@@ -6,7 +6,7 @@ import {
 } from '../chain/actions';
 import { activeSigner } from '../chain/account';
 import { MATCH_STATE_ACTIVE, MATCH_STATE_OPEN, MATCH_STATE_SETTLED } from '../chain/read';
-import { bindSession, prepareSession, sessionFor, sessionGasWei, sweepSession } from '../chain/session';
+import { bindSession, prepareSession, sessionFloatUnits, sessionFor, sweepSession } from '../chain/session';
 import { pvpSendChain } from '../lib/pvp';
 import { track } from '../lib/track';
 import { useChain } from './chain';
@@ -92,7 +92,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
     set({ phase: 'opening', seat: 0, deckCardIds, currency, lastError: null });
     try {
       const session = prepareSession();
-      const { matchId, hash } = await createMatchTx(tier, currency, deckCardIds, session, sessionGasWei());
+      const { matchId, hash } = await createMatchTx(tier, currency, deckCardIds, session, sessionFloatUnits());
       bindSession(matchId);
       const m = await readMatch(matchId);
       set({ phase: 'waiting', matchId, lastSignature: hash, stake: m?.stake ?? 0 });
@@ -118,7 +118,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
         throw new Error(`stake mismatch: the match is for ${m.stake} ${m.currency}`);
       }
       const session = prepareSession();
-      const { hash } = await joinMatchTx(m, deckCardIds, session, sessionGasWei());
+      const { hash } = await joinMatchTx(m, deckCardIds, session, sessionFloatUnits());
       bindSession(matchId);
       const now = await readMatch(matchId);
       const me = activeSigner()?.address ?? '';

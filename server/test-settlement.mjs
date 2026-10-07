@@ -61,14 +61,15 @@ try {
   const native0 = await pub.getBalance({ address: p0.address });
   const fee = (r) => r.gasUsed * r.effectiveGasPrice; // gas is native USDC (18 decimals)
   const session = freshAccount();
-  const permit = await usdcPermit(p0, pub, tc.chainId, dep.arena, stake);
+  const float = 50_000n; // 0.05 USDC of session-key gas, paid in ERC-20 USDC with the stake
+  const permit = await usdcPermit(p0, pub, tc.chainId, dep.arena, stake + float);
   const created = await write(p0, {
-    address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, d0, session.address, permit], value: parseEther('0.05'),
+    address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, d0, session.address, float, permit],
   });
   check('seat 0 staked with a permit inside the create tx (one transaction)', created.status === 'success');
-  check('and armed its session key with 0.05 USDC of gas', (await pub.getBalance({ address: session.address })) === parseEther('0.05'));
+  check('and armed its session key with 0.05 USDC of gas — an ERC-20 transfer that is native gas on Arc', (await pub.getBalance({ address: session.address })) === parseEther('0.05'));
   await write(p1, { address: USDC, abi: erc20Abi, functionName: 'approve', args: [dep.arena, maxUint256] });
-  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id, d1, zeroAddress, NO_PERMIT] });
+  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id, d1, zeroAddress, 0n, NO_PERMIT] });
   check('the arena escrows both stakes in USDC', (await usdcOf(dep.arena)) === stake * 2n);
   const finalHash = `0x${'5e'.repeat(32)}`;
   const claim0 = await write(p0, { address: dep.arena, abi: arenaAbi, functionName: 'claim', args: [id, 0, finalHash] });
@@ -89,7 +90,7 @@ try {
   const after = { p0: await usdcOf(p0.address), p1: await usdcOf(p1.address), t: await usdcOf(treasury) };
   // One balance: the winner's USDC also paid their gas and the session-key float.
   const native1 = await pub.getBalance({ address: p0.address });
-  const netOfCosts = native1 - native0 + parseEther('0.05') + fee(created) + fee(claim0);
+  const netOfCosts = native1 - native0 + parseEther('0.05') + fee(created) + fee(claim0); // float came out of the same balance
   check('winner +$0.80 net to the wei, once their gas and session float are added back', netOfCosts === parseEther('0.8'),
     `${formatUnits(netOfCosts, 18)} (gas ${formatUnits(fee(created) + fee(claim0), 18)} USDC)`);
   check('loser −$1 plus their own gas (gas is USDC too)', before.p1 - after.p1 >= 1_000_000n && before.p1 - after.p1 < 1_100_000n,

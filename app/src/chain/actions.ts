@@ -1,10 +1,9 @@
 import {
-  decodeEventLog, encodeFunctionData, erc20Abi, maxUint256, parseSignature, type Abi, type Address, type Hash, type Hex,
+  decodeEventLog, encodeFunctionData, erc20Abi, keccak256, maxUint256, parseSignature, toHex, type Abi, type Address, type Hash, type Hex,
 } from 'viem';
-import { apiFetch } from '../lib/api';
 import { track } from '../lib/track';
 import {
-  activeSigner, NoSignerError, readableChainError, send, type Signer, type TxResult,
+  activeSigner, NoSignerError, readableChainError, send, type Call, type Signer, type TxResult,
 } from './account';
 import { CHAIN_ID, DEPLOYMENT, USDC, publicClient } from './provider';
 import { ARENA_ABI, CARDS_ABI, fetchMatchById, type ChainMatch } from './read';
@@ -18,6 +17,36 @@ import { ARENA_ABI, CARDS_ABI, fetchMatchById, type ChainMatch } from './read';
  */
 
 export { NoSignerError, readableChainError };
+
+/*
+ * Arc's Memo predeploy (0x5294…e505, mainnet and testnet). Stakes and result
+ * claims go through `Memo.memo(arena, call, memoId, memo)`: Arc's CallFrom
+ * precompile keeps the player (or their session key) as msg.sender for the
+ * arena, and the Memo event tags the USDC movement with the match id —
+ * memoId = keccak256("mempire:match:<id>") — so any explorer, wallet or
+ * accountant can reconcile a stake or a payout with the match it belongs to.
+ * Memo needs an EOA caller; every Mempire signer is one. A chain without the
+ * predeploy (none known) falls back to the plain call.
+ */
+const MEMO: Address = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505';
+const MEMO_ABI = [{
+  type: 'function', name: 'memo', stateMutability: 'nonpayable',
+  inputs: [{ name: 'target', type: 'address' }, { name: 'data', type: 'bytes' }, { name: 'memoId', type: 'bytes32' }, { name: 'memoData', type: 'bytes' }],
+  outputs: [],
+}] as const satisfies Abi;
+let memoLive: boolean | null = null;
+export const matchMemoId = (matchId: number | bigint): Hex => keccak256(toHex(`mempire:match:${matchId}`));
+
+/** Send `call` wrapped in an Arc Memo tagged with the match. Value-less calls only (Memo forwards no value). */
+async function sendTagged(call: Call, matchId: number | bigint, note: string, by?: Signer | null): Promise<TxResult> {
+  memoLive ??= ((await publicClient().getCode({ address: MEMO }).catch(() => undefined)) ?? '0x') !== '0x';
+  if (!memoLive || call.value) return send(call, by ?? activeSigner());
+  const data = encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args as unknown[] });
+  return send({
+    address: MEMO, abi: MEMO_ABI as unknown as Abi, functionName: 'memo',
+    args: [call.address, data, matchMemoId(matchId), toHex(note)],
+  }, by ?? activeSigner());
+}
 export type { TxResult };
 
 const dep = () => {
@@ -49,53 +78,28 @@ export async function ensureAllowance(token: Address, spender: Address, amount: 
 
 // ──────────────────────────────────────────────────────────────── cards
 
-/**
- * A fresh signed price update for fighters, from the relay.
- *
- * On Arc mainnet (and by default everywhere) the relay signs a live OKX /
- * CoinGecko quote for the game's SignedPriceOracle; where the deployment uses
- * Pyth (Arc testnet) it proxies Hermes so the API key never ships to a browser.
- * Either way the update is posted in the mint transaction itself — a pull
- * oracle is only as fresh as the last time somebody posted one.
- */
-export async function pythUpdate(coinIds: number[]): Promise<Hex[]> {
-  const res = await apiFetch(`/api/pyth/update?coinIds=${coinIds.join(',')}`);
-  if (!res) throw new Error('the price relay is unreachable');
-  const body = await res.json().catch(() => ({})) as { updateData?: Hex[]; error?: string };
-  if (!res.ok || !Array.isArray(body.updateData)) {
-    throw new Error(body.error ? `price relay: ${body.error}` : 'the price relay returned no update');
-  }
-  return body.updateData;
-}
-
 export interface MintResult extends TxResult {
   cardId: number;
 }
 
-/** Mint a fighter for USDC ($0.05) or for 250 $MEMPIRE. Either way the card records its live price. */
+/**
+ * Mint a fighter for USDC ($0.05) or for 250 $MEMPIRE. Either way the contract
+ * reads the fighter's Chainlink Data Feed in the same transaction (fresh and
+ * positive, or no card) and stamps the card with that answer.
+ */
 export async function mintCardTx(coinId: number, payWith: 'usdc' | 'mempire' = 'usdc'): Promise<MintResult> {
   const d = dep();
-  const update = await pythUpdate([coinId]);
-  const client = publicClient();
-  const mintFee = await client.readContract({
-    address: d.cards, abi: CARDS_ABI, functionName: 'mintFee',
-  }) as bigint;
-  const pythFee = await client.readContract({
-    address: d.oracle,
-    abi: [{ type: 'function', name: 'getUpdateFee', stateMutability: 'view', inputs: [{ type: 'bytes[]', name: 'u' }], outputs: [{ type: 'uint256' }] }],
-    functionName: 'getUpdateFee',
-    args: [update],
-  }) as bigint;
   let r: TxResult;
   if (payWith === 'mempire') {
     await ensureAllowance(d.token, d.cards, 250n * 10n ** 18n);
-    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mintWithMempire', args: [coinId, update], value: pythFee });
+    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mintWithMempire', args: [coinId] });
   } else {
     const s = activeSigner();
     if (!s) throw new NoSignerError();
+    const mintFee = await publicClient().readContract({ address: d.cards, abi: CARDS_ABI, functionName: 'mintFee' }) as bigint;
     // The USDC fee rides in the mint tx as an EIP-2612 permit: one transaction, no approve.
     const permit = await permitFor(s, d.cards, mintFee);
-    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mint', args: [coinId, update, permit], value: pythFee });
+    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mint', args: [coinId, permit] });
   }
   const ev = eventArgs<{ cardId: bigint }>(r.receipt, CARDS_ABI, 'CardMinted');
   track('card.mint', { coinId, payWith });
@@ -233,19 +237,23 @@ async function permitFor(s: Signer, spender: Address, amount: bigint): Promise<P
 
 /** Escrow a stake and open a match. Returns the id the chain assigned. */
 export async function createMatchTx(
-  tier: number, currency: Currency, cardIds: number[], session: Address, sessionGas: bigint,
+  tier: number, currency: Currency, cardIds: number[], session: Address, sessionFloat: bigint,
 ): Promise<{ matchId: number; hash: Hash }> {
   const s = activeSigner();
   if (!s) throw new NoSignerError();
   const d = dep();
   const stake = await stakeFor(tier);
-  const permit = await permitFor(s, d.arena, stake);
-  // msg.value is only the session key's gas float (native USDC); the stake moves by permit.
-  const r = await send({
+  // One permit covers the stake and the session key's gas float (both ERC-20
+  // USDC), so there is no msg.value and the stake goes through Arc's Memo,
+  // tagged with the match id it will get (a race with another creator only
+  // mislabels the tag; MatchCreated is the record).
+  const permit = await permitFor(s, d.arena, stake + sessionFloat);
+  const call = {
     address: d.arena, abi: ARENA_ABI, functionName: 'createMatch',
-    args: [tier, cardIds.map(BigInt), session, permit],
-    value: sessionGas,
-  }, s);
+    args: [tier, cardIds.map(BigInt), session, sessionFloat, permit],
+  };
+  const predicted = await publicClient().readContract({ address: d.arena, abi: ARENA_ABI, functionName: 'nextMatchId' }) as bigint;
+  const r = await sendTagged(call, predicted, `stake:open:tier${tier}`, s);
   const ev = eventArgs<{ matchId: bigint }>(r.receipt, ARENA_ABI, 'MatchCreated');
   if (!ev) throw new Error('match created but no MatchCreated event was found');
   track('match.staked', { seat: 0, tier, currency });
@@ -254,16 +262,15 @@ export async function createMatchTx(
 
 /** Take the second seat of an open match. */
 export async function joinMatchTx(
-  m: ChainMatch, cardIds: number[], session: Address, sessionGas: bigint,
+  m: ChainMatch, cardIds: number[], session: Address, sessionFloat: bigint,
 ): Promise<{ hash: Hash }> {
   const s = activeSigner();
   if (!s) throw new NoSignerError();
-  const permit = await permitFor(s, dep().arena, m.stakeRaw);
-  const r = await send({
+  const permit = await permitFor(s, dep().arena, m.stakeRaw + sessionFloat);
+  const r = await sendTagged({
     address: dep().arena, abi: ARENA_ABI, functionName: 'joinMatch',
-    args: [BigInt(m.id), cardIds.map(BigInt), session, permit],
-    value: sessionGas,
-  }, s);
+    args: [BigInt(m.id), cardIds.map(BigInt), session, sessionFloat, permit],
+  }, m.id, 'stake:join', s);
   track('match.staked', { seat: 1, tier: m.tier, currency: m.currency });
   return { hash: r.hash };
 }
@@ -272,11 +279,15 @@ export async function cancelMatchTx(matchId: number): Promise<TxResult> {
   return send({ address: dep().arena, abi: ARENA_ABI, functionName: 'cancelMatch', args: [BigInt(matchId)] });
 }
 
-/** Record this seat's result — by the session key when there is one, so no prompt. */
+/**
+ * Record this seat's result — by the session key when there is one, so no
+ * prompt. Tagged through Arc's Memo with the match id: the second claim is the
+ * one that pays the pot, so the payout itself carries the tag.
+ */
 export async function claimTx(matchId: number, winner: number, finalHash: Hex, by?: Signer | null): Promise<TxResult> {
-  return send({
+  return sendTagged({
     address: dep().arena, abi: ARENA_ABI, functionName: 'claim', args: [BigInt(matchId), winner, finalHash],
-  }, by ?? activeSigner());
+  }, matchId, `result:${winner === 2 ? 'tie' : `seat${winner}`}`, by);
 }
 
 /** Finish a match whose deadline passed. Permissionless; the stored claims decide it. */

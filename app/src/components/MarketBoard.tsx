@@ -5,7 +5,8 @@ import { COINS, tickerOf } from '../lib/coins';
  * The desktop gutters: today's market meta, from the chain.
  *
  * MarketMeta stores one bounded modifier per fighter per ten-minute epoch,
- * written by a Chainlink CRE report or derived on chain from Pyth momentum.
+ * derived on chain from each fighter's Chainlink Data Feed (its 24h move), or
+ * on Arc testnet optionally written by a Chainlink CRE report.
  * The left board shows the fighters it buffed hardest, the right board the
  * ones it nerfed — the same numbers every match this epoch fights with. When
  * nothing has been posted yet the board says so; it never fills the gap.

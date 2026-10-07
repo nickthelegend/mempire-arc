@@ -49,9 +49,12 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     uint32 public constant MAX_TICK = 5_000;
     uint16 public constant MAX_PLAYS_PER_SEAT = 200;
     uint8 public constant DECK_SIZE = 8;
-    /// Most native USDC (18 decimals: 0.25 USDC) a create/join may forward to
-    /// its session key for gas. A whole match of plays costs a few cents on Arc.
+    /// Most USDC a create/join may forward to its session key for gas: 0.25
+    /// USDC, in native units (18 decimals). A whole match of plays costs a few
+    /// cents on Arc.
     uint256 public constant MAX_SESSION_GAS = 0.25 ether;
+    /// Native USDC units per ERC-20 USDC unit (18 vs 6 decimals: one balance).
+    uint256 internal constant NATIVE_PER_UNIT = 1e12;
     /// The four stake tiers, in USDC (6 decimals): $1, $5, $25, $100.
     uint8 public constant TIERS = 4;
 
@@ -256,23 +259,26 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     /// The USDC stake is pulled with an allowance or a permit signed in the
     /// same breath; msg.value (native USDC) is only the gas to forward to the
     /// session key.
-    function createMatch(uint8 tier, uint256[] calldata cardIds, address session, Permit calldata permit)
-        external
-        payable
-        nonReentrant
-        returns (uint64 id)
-    {
-        id = _create(msg.sender, tier, cardIds, session, permit);
+    function createMatch(
+        uint8 tier,
+        uint256[] calldata cardIds,
+        address session,
+        uint256 sessionFloat,
+        Permit calldata permit
+    ) external payable nonReentrant returns (uint64 id) {
+        id = _create(msg.sender, tier, cardIds, session, sessionFloat, permit);
     }
 
     /// Take the second seat. The stake must match the one already escrowed and
     /// the two decks must sit within the power band.
-    function joinMatch(uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
-        external
-        payable
-        nonReentrant
-    {
-        _join(msg.sender, id, cardIds, session, permit);
+    function joinMatch(
+        uint64 id,
+        uint256[] calldata cardIds,
+        address session,
+        uint256 sessionFloat,
+        Permit calldata permit
+    ) external payable nonReentrant {
+        _join(msg.sender, id, cardIds, session, sessionFloat, permit);
     }
 
     /// Open a match for `player`, on the instruction of the cross-chain entry
@@ -288,7 +294,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         Permit calldata permit
     ) external nonReentrant returns (uint64 id) {
         if (msg.sender != entryGateway || player == address(0)) revert NotGateway();
-        id = _create(player, tier, cardIds, session, permit);
+        id = _create(player, tier, cardIds, session, 0, permit);
     }
 
     /// Join a match for `player`, on the gateway's instruction. See `createMatchFor`.
@@ -297,18 +303,22 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         nonReentrant
     {
         if (msg.sender != entryGateway || player == address(0)) revert NotGateway();
-        _join(player, id, cardIds, session, permit);
+        _join(player, id, cardIds, session, 0, permit);
     }
 
-    function _create(address player, uint8 tier, uint256[] calldata cardIds, address session, Permit calldata permit)
-        internal
-        returns (uint64 id)
-    {
+    function _create(
+        address player,
+        uint8 tier,
+        uint256[] calldata cardIds,
+        address session,
+        uint256 sessionFloat,
+        Permit calldata permit
+    ) internal returns (uint64 id) {
         if (paused) revert Paused();
         uint128 stake = stakeFor(tier);
         if (stake == 0) revert BadStake();
         if (tier > maxTier) revert TierClosed();
-        uint256 sessionGas = _collectStake(player, stake, permit);
+        _collectStake(player, stake, sessionFloat, permit);
 
         id = nextMatchId++;
         (uint32 power, bytes32 deckHash) = cards.lockDeck(player, cardIds, id);
@@ -327,19 +337,24 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         m.stake = stake;
         m.deck0 = deckHash;
 
-        _fundSession(session, sessionGas);
+        _fundSession(session, sessionFloat);
         emit MatchCreated(id, player, tier, usdc, stake, power, deckHash, cardIds, session);
     }
 
-    function _join(address player, uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
-        internal
-    {
+    function _join(
+        address player,
+        uint64 id,
+        uint256[] calldata cardIds,
+        address session,
+        uint256 sessionFloat,
+        Permit calldata permit
+    ) internal {
         Match storage m = _matches[id];
         if (m.state != STATE_OPEN) revert BadState();
         if (player == m.p0 || session == m.p0 || (session != address(0) && session == m.s0)) {
             revert SelfMatch();
         }
-        uint256 sessionGas = _collectStake(player, m.stake, permit);
+        _collectStake(player, m.stake, sessionFloat, permit);
 
         (uint32 power, bytes32 deckHash) = cards.lockDeck(player, cardIds, id);
         uint32 diff = power > m.power0 ? power - m.power0 : m.power0 - power;
@@ -353,7 +368,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         m.deadline = uint64(block.timestamp + matchTimeout);
         m.metaEpoch = address(marketMeta) == address(0) ? 0 : marketMeta.currentEpoch();
 
-        _fundSession(session, sessionGas);
+        _fundSession(session, sessionFloat);
         emit MatchJoined(id, player, power, deckHash, cardIds, session, m.metaEpoch, m.deadline);
     }
 
@@ -505,27 +520,33 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     // ─────────────────────────────────────────────────────────────── internals
 
-    function _collectStake(address player, uint128 stake, Permit calldata permit)
-        internal
-        returns (uint256 sessionGas)
-    {
-        sessionGas = msg.value;
-        if (sessionGas > MAX_SESSION_GAS) revert BadSessionGas();
+    /// Pull the stake — and the session key's gas float, if it is paid in ERC-20
+    /// USDC — from the player, by allowance or by the permit (signed for
+    /// stake + float). msg.value, if any, is extra float in native USDC.
+    function _collectStake(address player, uint128 stake, uint256 sessionFloat, Permit calldata permit) internal {
+        if (msg.value + sessionFloat * NATIVE_PER_UNIT > MAX_SESSION_GAS) revert BadSessionGas();
+        uint256 pull = uint256(stake) + sessionFloat;
         if (permit.deadline != 0) {
             // A permit that was front-run has already set the allowance it
             // was going to set; the transfer below is what must succeed.
-            try IERC20Permit(usdc).permit(
-                player, address(this), stake, permit.deadline, permit.v, permit.r, permit.s
-            ) {} catch {}
+            try IERC20Permit(usdc).permit(player, address(this), pull, permit.deadline, permit.v, permit.r, permit.s) {}
+                catch {}
         }
-        IERC20(usdc).safeTransferFrom(player, address(this), stake);
+        IERC20(usdc).safeTransferFrom(player, address(this), pull);
     }
 
-    function _fundSession(address session, uint256 amount) internal {
-        if (amount == 0) return;
+    /// Arm the session key with gas. On Arc, ERC-20 USDC *is* the gas balance:
+    /// the float moves as a plain USDC transfer, which is why a create or join
+    /// needs no msg.value — and so can be sent through Arc's Memo, which
+    /// forwards none.
+    function _fundSession(address session, uint256 sessionFloat) internal {
+        if (msg.value == 0 && sessionFloat == 0) return;
         if (session == address(0)) revert BadSessionGas();
-        (bool ok,) = session.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        if (sessionFloat != 0) IERC20(usdc).safeTransfer(session, sessionFloat);
+        if (msg.value != 0) {
+            (bool ok,) = session.call{value: msg.value}("");
+            if (!ok) revert TransferFailed();
+        }
     }
 
     /// Push a payout; if USDC refuses it (a blocklisted recipient, a paused

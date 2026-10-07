@@ -342,6 +342,11 @@
         "internalType": "address"
       },
       {
+        "name": "sessionFloat",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "permit",
         "type": "tuple",
         "internalType": "struct MempireArena.Permit",
@@ -630,6 +635,11 @@
         "name": "session",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "sessionFloat",
+        "type": "uint256",
+        "internalType": "uint256"
       },
       {
         "name": "permit",

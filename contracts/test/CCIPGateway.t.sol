@@ -189,7 +189,7 @@ contract CCIPGatewayTest is Base {
         CircleUSDC.mint(carol, 5e6); // carol already on Arc
         vm.startPrank(carol);
         usdc.approve(address(arena), type(uint256).max);
-        uint64 id = arena.createMatch(1, _deck(carol), address(0), noPermit());
+        uint64 id = arena.createMatch(1, _deck(carol), address(0), 0, noPermit());
         vm.stopPrank();
 
         // Dave plays from Base: CCTP has already minted his $5 on Arc (Fast Transfer

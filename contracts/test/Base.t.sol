@@ -111,8 +111,8 @@ abstract contract Base is Test {
         aDeck = giveStarter(alice);
         bDeck = giveStarter(bob);
         vm.prank(alice);
-        id = arena.createMatch{value: 0.05 ether}(tier, aDeck, aliceSession, noPermit());
+        id = arena.createMatch{value: 0.05 ether}(tier, aDeck, aliceSession, 0, noPermit());
         vm.prank(bob);
-        arena.joinMatch{value: 0.05 ether}(id, bDeck, bobSession, noPermit());
+        arena.joinMatch{value: 0.05 ether}(id, bDeck, bobSession, 0, noPermit());
     }
 }

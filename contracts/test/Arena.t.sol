@@ -15,7 +15,7 @@ contract ArenaTest is Base {
         uint256 sBefore = aliceSession.balance;
         uint256 uBefore = usdc.balanceOf(alice);
         vm.prank(alice);
-        uint64 id = arena.createMatch{value: 0.03 ether}(1, deck, aliceSession, noPermit());
+        uint64 id = arena.createMatch{value: 0.03 ether}(1, deck, aliceSession, 0, noPermit());
 
         MempireArena.Match memory m = arena.getMatch(id);
         assertEq(m.p0, alice);
@@ -35,15 +35,35 @@ contract ArenaTest is Base {
         cards.transferFrom(alice, bob, deck[0]);
     }
 
+    /// The float can be paid in ERC-20 USDC with the stake (one permit, no msg.value) —
+    /// on Arc that transfer *is* the session key's gas. Mixed with native value, the cap covers both.
+    function test_sessionFloat_inErc20Usdc_noValueNeeded() public {
+        uint256[] memory deck = giveStarter(alice);
+        uint256 before = usdc.balanceOf(alice);
+        vm.prank(alice);
+        arena.createMatch(1, deck, aliceSession, 0.1e6, noPermit());
+        assertEq(before - usdc.balanceOf(alice), KNIGHT + 0.1e6);
+        assertEq(usdc.balanceOf(aliceSession), 0.1e6);
+        assertEq(usdc.balanceOf(address(arena)), KNIGHT, "only the stake stays escrowed");
+
+        uint256[] memory bDeck = giveStarter(bob);
+        vm.prank(bob);
+        vm.expectRevert(MempireArena.BadSessionGas.selector);
+        arena.createMatch{value: 0.2 ether}(1, bDeck, bobSession, 0.05e6 + 1, noPermit());
+        vm.prank(bob);
+        vm.expectRevert(MempireArena.BadSessionGas.selector);
+        arena.createMatch(1, bDeck, address(0), 1, noPermit());
+    }
+
     function test_create_rejectsWrongStake_tier_andSessionGasCap() public {
         uint256[] memory deck = giveStarter(alice);
         vm.startPrank(alice);
         vm.expectRevert(MempireArena.BadStake.selector);
-        arena.createMatch(4, deck, aliceSession, noPermit());
+        arena.createMatch(4, deck, aliceSession, 0, noPermit());
         vm.expectRevert(MempireArena.BadSessionGas.selector);
-        arena.createMatch{value: 0.25 ether + 1}(1, deck, aliceSession, noPermit());
+        arena.createMatch{value: 0.25 ether + 1}(1, deck, aliceSession, 0, noPermit());
         vm.expectRevert(MempireArena.BadSessionGas.selector);
-        arena.createMatch{value: 1}(1, deck, address(0), noPermit());
+        arena.createMatch{value: 1}(1, deck, address(0), 0, noPermit());
         vm.stopPrank();
 
         // No allowance and no permit: the USDC pull fails and nothing is locked.
@@ -52,7 +72,7 @@ contract ArenaTest is Base {
         uint256[] memory cDeck = giveStarter(carol);
         vm.prank(carol);
         vm.expectRevert();
-        arena.createMatch(0, cDeck, address(0), noPermit());
+        arena.createMatch(0, cDeck, address(0), 0, noPermit());
         assertFalse(cards.isLocked(cDeck[0]));
     }
 
@@ -61,13 +81,13 @@ contract ArenaTest is Base {
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
         vm.expectRevert(MempireCards.NotOwner.selector);
-        arena.createMatch(1, bDeck, aliceSession, noPermit());
+        arena.createMatch(1, bDeck, aliceSession, 0, noPermit());
 
         vm.prank(alice);
-        arena.createMatch(1, aDeck, aliceSession, noPermit());
+        arena.createMatch(1, aDeck, aliceSession, 0, noPermit());
         vm.prank(alice);
         vm.expectRevert(MempireCards.CardLocked.selector);
-        arena.createMatch(1, aDeck, aliceSession, noPermit());
+        arena.createMatch(1, aDeck, aliceSession, 0, noPermit());
 
         uint256[] memory dup = new uint256[](8);
         dup[0] = mintAs(alice, 0); // same coin as aDeck[0]
@@ -77,7 +97,7 @@ contract ArenaTest is Base {
         dup[7] = mintAs(alice, 0);
         vm.prank(alice);
         vm.expectRevert(MempireCards.DuplicateCoin.selector);
-        arena.createMatch(1, dup, aliceSession, noPermit());
+        arena.createMatch(1, dup, aliceSession, 0, noPermit());
     }
 
     function test_join_activates_snapshotsMetaEpoch_rejectsSelf() public {
@@ -87,17 +107,17 @@ contract ArenaTest is Base {
         uint256[] memory aDeck = giveStarter(alice);
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
-        uint64 id = arena.createMatch(1, aDeck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, aDeck, aliceSession, 0, noPermit());
 
         vm.prank(alice);
         vm.expectRevert(MempireArena.SelfMatch.selector);
-        arena.joinMatch(id, aDeck, aliceSession, noPermit());
+        arena.joinMatch(id, aDeck, aliceSession, 0, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.SelfMatch.selector);
-        arena.joinMatch(id, bDeck, aliceSession, noPermit());
+        arena.joinMatch(id, bDeck, aliceSession, 0, noPermit());
 
         vm.prank(bob);
-        arena.joinMatch(id, bDeck, bobSession, noPermit());
+        arena.joinMatch(id, bDeck, bobSession, 0, noPermit());
         MempireArena.Match memory m = arena.getMatch(id);
         assertEq(m.state, arena.STATE_ACTIVE());
         assertEq(m.metaEpoch, 7);
@@ -122,16 +142,16 @@ contract ArenaTest is Base {
             bDeck[i] = keep;
         }
         vm.prank(alice);
-        uint64 id = arena.createMatch(1, aDeck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, aDeck, aliceSession, 0, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.PowerMismatch.selector);
-        arena.joinMatch(id, bDeck, bobSession, noPermit());
+        arena.joinMatch(id, bDeck, bobSession, 0, noPermit());
     }
 
     function test_cancel_refundsAndUnlocks() public {
         uint256[] memory deck = giveStarter(alice);
         vm.prank(alice);
-        uint64 id = arena.createMatch(1, deck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, deck, aliceSession, 0, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.NotASeat.selector);
         arena.cancelMatch(id);
@@ -302,9 +322,9 @@ contract ArenaTest is Base {
         uint256[] memory bDeck = giveStarter(bob);
         for (uint256 i; i < 17; ++i) {
             vm.prank(p[0]);
-            uint64 id = arena.createMatch(0, aDeck, address(0), noPermit());
+            uint64 id = arena.createMatch(0, aDeck, address(0), 0, noPermit());
             vm.prank(p[1]);
-            arena.joinMatch(id, bDeck, address(0), noPermit());
+            arena.joinMatch(id, bDeck, address(0), 0, noPermit());
             vm.prank(alice);
             arena.claim(id, 0, bytes32(i));
             vm.prank(bob);
@@ -324,9 +344,9 @@ contract ArenaTest is Base {
         vm.prank(bob);
         usdc.approve(address(bare), type(uint256).max);
         vm.prank(alice);
-        uint64 id = bare.createMatch(0, aDeck, address(0), noPermit());
+        uint64 id = bare.createMatch(0, aDeck, address(0), 0, noPermit());
         vm.prank(bob);
-        bare.joinMatch(id, bDeck, address(0), noPermit());
+        bare.joinMatch(id, bDeck, address(0), 0, noPermit());
         uint256 before = usdc.balanceOf(alice);
         vm.prank(alice);
         bare.claim(id, 0, bytes32(0));
@@ -412,13 +432,13 @@ contract ArenaTest is Base {
 
         MempireArena.Permit memory pc = _permit(carolKey, carol, stake);
         vm.prank(carol);
-        uint64 id = arena.createMatch{value: 0.02 ether}(1, cDeck, aliceSession, pc);
+        uint64 id = arena.createMatch{value: 0.02 ether}(1, cDeck, aliceSession, 0, pc);
         assertEq(usdc.balanceOf(address(arena)), stake);
         assertEq(aliceSession.balance, 0.02 ether);
 
         MempireArena.Permit memory pd = _permit(daveKey, dave, stake);
         vm.prank(dave);
-        arena.joinMatch(id, dDeck, bobSession, pd);
+        arena.joinMatch(id, dDeck, bobSession, 0, pd);
 
         uint256 tBefore = usdc.balanceOf(treasury);
         vm.prank(aliceSession);
@@ -440,7 +460,7 @@ contract ArenaTest is Base {
         // Someone submits Carol's permit first; her create must still succeed.
         usdc.permit(carol, address(arena), stake, pc.deadline, pc.v, pc.r, pc.s);
         vm.prank(carol);
-        arena.createMatch(0, cDeck, address(0), pc);
+        arena.createMatch(0, cDeck, address(0), 0, pc);
         assertEq(usdc.balanceOf(address(arena)), stake);
     }
 
@@ -460,9 +480,9 @@ contract ArenaTest is Base {
         arena.setLimits(1, false); // mainnet launch: $1 and $5 only
         vm.prank(alice);
         vm.expectRevert(MempireArena.TierClosed.selector);
-        arena.createMatch(2, deck, address(0), noPermit());
+        arena.createMatch(2, deck, address(0), 0, noPermit());
         vm.prank(alice);
-        arena.createMatch(1, deck, address(0), noPermit());
+        arena.createMatch(1, deck, address(0), 0, noPermit());
 
         vm.expectRevert(bytes("bad tier"));
         new MempireArena(admin, cards, address(usdc), meta, treasury, 4);
@@ -475,17 +495,17 @@ contract ArenaTest is Base {
         uint256[] memory aDeck = giveStarter(alice);
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
-        uint64 id = arena.createMatch(0, aDeck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(0, aDeck, aliceSession, 0, noPermit());
         vm.prank(admin);
         arena.setLimits(3, true);
 
         vm.prank(carolAddr());
         vm.expectRevert(MempireArena.Paused.selector);
-        arena.createMatch(0, new uint256[](8), address(0), noPermit());
+        arena.createMatch(0, new uint256[](8), address(0), 0, noPermit());
 
         // An open match can still be joined, played and settled while paused.
         vm.prank(bob);
-        arena.joinMatch(id, bDeck, bobSession, noPermit());
+        arena.joinMatch(id, bDeck, bobSession, 0, noPermit());
         vm.prank(aliceSession);
         arena.play(id, 10, 0, 0, 0);
         vm.prank(aliceSession);

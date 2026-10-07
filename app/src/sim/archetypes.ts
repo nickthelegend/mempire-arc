@@ -80,7 +80,7 @@ export const scaleStat = (base: number, level: number, bps = 0): number => {
 };
 
 /**
- * Deterministic fighter → archetype: keccak256 of its Pyth feed id, mod 6.
+ * Deterministic fighter → archetype: keccak256 of its feed id (keccak256 of the Chainlink pair), mod 6.
  * Must match `MempireCards.archetypeFor` byte-for-byte, so client and chain
  * always agree on a fighter's class. Fixed by the asset's identity, so nobody
  * can reroll into a better one.

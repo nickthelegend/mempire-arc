@@ -183,8 +183,8 @@ try {
   const s0 = privateKeyToAccount(generatePrivateKey());
   const s1 = privateKeyToAccount(generatePrivateKey());
   const id = await read$(dep.arena, arenaAbi, 'nextMatchId');
-  await write(p0, { address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, ids0, s0.address, await permit(p0, stake)], value: parseEther('0.05') });
-  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id, ids1, s1.address, await permit(p1, stake)], value: parseEther('0.05') });
+  await write(p0, { address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, ids0, s0.address, 0n, await permit(p0, stake)], value: parseEther('0.05') });
+  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id, ids1, s1.address, 50_000n, await permit(p1, stake + 50_000n)] }); // float as ERC-20 USDC
   const m = await read$(dep.arena, arenaAbi, 'getMatch', [id]);
   check('both stakes escrowed with permits, match Active', Number(m.state) === 2 && await usdcOf(dep.arena) >= stake * 2n);
   check('the match snapshotted the Chainlink-feed epoch', m.metaEpoch === epoch);
@@ -250,8 +250,8 @@ try {
   const stake2 = await read$(dep.arena, arenaAbi, 'stakeFor', [0]);
   // The loser of match 1 is under $1 now (stake, gas and session float all came out of one USDC balance): top up.
   await pub.waitForTransactionReceipt({ hash: await wallet(funder).sendTransaction({ to: p1.address, value: parseEther('1') }) });
-  await write(p0, { address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, await freeIds(p0), zeroAddress, await permit(p0, stake2)] });
-  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id2, await freeIds(p1), zeroAddress, await permit(p1, stake2)] });
+  await write(p0, { address: dep.arena, abi: arenaAbi, functionName: 'createMatch', args: [0, await freeIds(p0), zeroAddress, 0n, await permit(p0, stake2)] });
+  await write(p1, { address: dep.arena, abi: arenaAbi, functionName: 'joinMatch', args: [id2, await freeIds(p1), zeroAddress, 0n, await permit(p1, stake2)] });
   const timeout = await read$(dep.arena, arenaAbi, 'matchTimeout');
   await rpc('evm_increaseTime', [Number(timeout) + 1]);
   await rpc('evm_mine');

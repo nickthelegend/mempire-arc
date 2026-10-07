@@ -467,10 +467,10 @@ export function Cards() {
           ))}
         </div>
         <p style={{ fontSize: 12, color: 'var(--dim)', marginTop: 8 }}>
-          A fighter can be minted only with a fresh Pyth price for it, posted in the
-          mint transaction itself — no live price, no card. Today&apos;s ▲▼ is the
-          market meta: Chainlink CRE (24h move) or Pyth momentum (spot vs its moving
-          average) becomes a bounded (±15%) stat modifier on chain.
+          Every fighter is priced by its Chainlink Data Feed on Arc, read in the mint
+          transaction itself — a stale or missing feed, no card. Today&apos;s ▲▼ is the
+          market meta: each feed&apos;s own 24-hour move, computed on chain from its round
+          history, becomes a bounded (±15%) stat modifier.
         </p>
         <TxReceipt />
       </section>

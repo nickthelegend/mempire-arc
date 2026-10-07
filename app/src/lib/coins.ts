@@ -3,33 +3,34 @@ import cardCatalogue from '../data/cards.json';
 import roster from '../shared/roster.json';
 
 /*
- * The roster: 36 assets, each a fighter.
+ * The roster: 20 assets, each a fighter — one for every Chainlink Data Feed on
+ * Arc mainnet worth fighting over: majors, DeFi tokens, gold (PAXG) and fiat
+ * currencies.
  *
- * Built by `shared/roster.json`, which is generated from Pyth's own feed
- * catalogue with exact symbol matches — never a fuzzy search, which is how a
- * game ends up with a scam token wearing a real ticker. The same file registers
- * the fighters on chain in the same order, so `coinId` here is the coin id the
- * contracts use.
+ * Built by `scripts/gen-roster.mjs` from Chainlink's own Arc feed directory.
+ * The same file registers the fighters on chain in the same order, so `coinId`
+ * here is the coin id the contracts use, and each fighter's price on chain is
+ * its Chainlink feed.
  *
- * A coin's identity is its Pyth price feed id. `mint` keeps its old name
- * because the whole client already keys fighters by it; on this chain it holds
- * the feed id. Archetype is `keccak256(feedId) % 6` — byte-for-byte what
+ * A coin's identity is `feedId = keccak256(pair)` ("BTC / USD"). `mint` keeps
+ * its old name because the whole client keys fighters by it; it holds the
+ * feed id. Archetype is `keccak256(feedId) % 6` — byte-for-byte what
  * `MempireCards.archetypeFor` computes, so client and chain cannot disagree
  * about what class a fighter is.
  */
 
-export type AssetKind = 'meme' | 'crypto' | 'stock';
+export type AssetKind = 'crypto' | 'defi' | 'rwa';
 
 export const ASSET_KINDS: { id: AssetKind; label: string }[] = [
-  { id: 'meme', label: 'Memes' },
-  { id: 'crypto', label: 'Crypto' },
-  { id: 'stock', label: 'Stocks' },
+  { id: 'crypto', label: 'Majors' },
+  { id: 'defi', label: 'DeFi' },
+  { id: 'rwa', label: 'Gold & FX' },
 ];
 
 export interface Coin {
   /** The on-chain coin id (index in the roster). */
   coinId: number;
-  /** Identity: the Pyth price feed id (0x…). Named `mint` for the rest of the client. */
+  /** Identity: keccak256 of the Chainlink pair (0x…). Named `mint` for the rest of the client. */
   mint: string;
   feedId: Hex;
   ticker: string;
@@ -37,7 +38,7 @@ export interface Coin {
   hue: number;
   /** Demo holdings, unused on chain: holding an asset is never required. */
   balance: number;
-  /** Live price from the relay's feed; 0 until it arrives. */
+  /** Live Chainlink price, via the relay; 0 until it arrives. */
   priceUsd: number;
   liquidityUsd: number;
   ageHours: number;
@@ -52,7 +53,8 @@ export interface Coin {
   volume24h?: number;
   pumpFun?: boolean;
   url?: string;
-  pythSymbol: string;
+  /** The Chainlink pair, e.g. "BTC / USD". */
+  pair: string;
 }
 
 interface RosterRow {
@@ -61,7 +63,7 @@ interface RosterRow {
   name: string;
   kind: AssetKind;
   feedId: Hex;
-  pythSymbol: string;
+  pair: string;
   hue: number;
   hasArt: boolean;
 }
@@ -75,10 +77,10 @@ const KIND_BY_TICKER = new Map<string, AssetKind>(
 export const tickerOf = (c: Coin): string => `$${c.ticker.replace(/^\$+/, '')}`;
 
 /*
- * The eligibility gate moved on chain: a fighter can be minted only with a
- * fresh Pyth price for it, posted in the same transaction. Every roster asset
- * has a live feed, so nothing here is ineligible — the functions stay so the
- * screens that ask still get an honest answer.
+ * The eligibility gate is on chain: a fighter can be minted only while its
+ * Chainlink feed is fresh and positive, read in the mint transaction. Every
+ * roster asset has a live feed, so nothing here is ineligible — the functions
+ * stay so the screens that ask still get an honest answer.
  */
 export const ELIGIBILITY = { minLiquidityUsd: 0, minAgeHours: 0 };
 export const isEligible = (_c: Coin): boolean => true;
@@ -91,7 +93,7 @@ export function archetypeForFeed(feedId: string): number {
 }
 
 function build(): Coin[] {
-  return (roster.coins as RosterRow[]).map((c) => ({
+  return (roster.coins as unknown as RosterRow[]).map((c) => ({
     coinId: c.coinId,
     mint: c.feedId.toLowerCase(),
     feedId: c.feedId,
@@ -103,8 +105,8 @@ function build(): Coin[] {
     liquidityUsd: 0,
     ageHours: 0,
     decimals: 18,
-    kind: KIND_BY_TICKER.get(c.ticker.toUpperCase()) ?? c.kind,
-    pythSymbol: c.pythSymbol,
+    kind: c.kind ?? KIND_BY_TICKER.get(c.ticker.toUpperCase()),
+    pair: c.pair,
     // WebP at ~58 KB rather than the 413 KB PNG; the PNG stays on disk because
     // NFT metadata points at it. Both the card frame and the battle billboard
     // fall back to a procedural badge if a file is missing.

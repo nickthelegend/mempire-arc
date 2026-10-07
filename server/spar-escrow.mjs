@@ -107,7 +107,7 @@ ws.on('message', async (raw) => {
       address: deployment.arena,
       abi: abis.arena,
       functionName: 'joinMatch',
-      args: [id, deck.map((d) => d.id), ZERO_ADDRESS, NO_PERMIT],
+      args: [id, deck.map((d) => d.id), ZERO_ADDRESS, 0n, NO_PERMIT],
     });
     console.log(`spar-escrow: JOINED match #${id} — ${hash}`);
     ws.send(JSON.stringify({ t: 'chain', stage: 'joined', onchainMatchId: Number(id), txHash: hash }));

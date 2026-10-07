@@ -107,13 +107,15 @@ contract ArcStackForkTest is Test {
         vm.recordLogs();
         vm.prank(p0, p0); // an EOA transaction, as Memo requires
         IMemo(MEMO).memo(
-            address(arena), abi.encodeCall(MempireArena.createMatch, (0, d0, address(0), none)), tag, bytes("stake:seat0:$1")
+            address(arena), abi.encodeCall(MempireArena.createMatch, (0, d0, makeAddr("session0"), 50_000, none)), tag, bytes("stake:seat0:$1")
         );
         assertEq(arena.getMatch(1).p0, p0, "CallFrom kept the player as msg.sender");
+        // The session float went as ERC-20 USDC — and on Arc that is gas: the key's native balance.
+        assertEq(makeAddr("session0").balance, 0.05 ether, "ERC-20 USDC float = native gas on Arc");
         _assertMemo(p0, address(arena), tag);
 
         vm.prank(p1, p1);
-        IMemo(MEMO).memo(address(arena), abi.encodeCall(MempireArena.joinMatch, (1, d1, address(0), none)), tag, bytes("stake:seat1:$1"));
+        IMemo(MEMO).memo(address(arena), abi.encodeCall(MempireArena.joinMatch, (1, d1, address(0), 0, none)), tag, bytes("stake:seat1:$1"));
         vm.prank(p0, p0);
         arena.claim(1, 1, bytes32(0));
         uint256 before = IERC20(USDC).balanceOf(p1);
@@ -123,6 +125,7 @@ contract ArcStackForkTest is Test {
             address(arena), abi.encodeCall(MempireArena.claim, (1, 1, bytes32(0))), tag, bytes("payout:winner:seat1")
         );
         assertEq(IERC20(USDC).balanceOf(p1) - before, 1.8e6, "payout, tagged with the match id");
+        assertEq(p0.balance, 3 ether - 1.05 ether, "seat 0 paid stake + float, and no gas (forge)");
         _assertMemo(p1, address(arena), tag);
     }
 

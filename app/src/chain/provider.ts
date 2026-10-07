@@ -69,8 +69,9 @@ export interface Deployment {
   arena: Address;
   marketMeta: Address;
   usdc: Address;
-  oracle: Address;
-  oracleKind: 'signed' | 'pyth';
+  /** "chainlink" (Arc mainnet / a mainnet fork) or "mirror" (Arc testnet copies of the mainnet feeds). */
+  priceFeeds: 'chainlink' | 'mirror';
+  ccipGateway: Address;
   relayer: Address;
   maxTier: number;
   startBlock: number;

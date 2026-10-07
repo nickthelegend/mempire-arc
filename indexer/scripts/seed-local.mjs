@@ -227,10 +227,10 @@ const metaEpochAtStart = await pub.readContract({ address: dep.marketMeta, abi: 
 const stake = await pub.readContract({ address: dep.arena, abi: arenaAbi, functionName: "stakeFor", args: [0] }); // Pauper: 1 USDC
 
 // ── 1. USDC Pauper, settled: A (seat 0, permit) beats B (seat 1, approve) ──
-const created1 = await send(A, dep.arena, arenaAbi, "createMatch", [0, deckA, zeroAddress, await usdcPermit(A, stake)]);
+const created1 = await send(A, dep.arena, arenaAbi, "createMatch", [0, deckA, zeroAddress, 0n, await usdcPermit(A, stake)]);
 const m1 = eventOf(created1, "MatchCreated").args.matchId;
 await send(B, USDC, usdcAbi, "approve", [dep.arena, stake]);
-const joined1 = await send(B, dep.arena, arenaAbi, "joinMatch", [m1, deckB, zeroAddress, NO_PERMIT]);
+const joined1 = await send(B, dep.arena, arenaAbi, "joinMatch", [m1, deckB, zeroAddress, 0n, NO_PERMIT]);
 const metaEpoch1 = eventOf(joined1, "MatchJoined").args.metaEpoch;
 log(`match ${m1}  USDC Pauper, stake ${stake}, meta epoch ${metaEpoch1}`);
 const s1a = await playSeat(A, m1, 0, [[40, 0, -120, -300], [130, 3, 80, -260], [260, 5, 0, -200]], 300);
@@ -248,9 +248,9 @@ log(`         settled: pot ${settled.args.pot}, rake ${settled.args.rake}, chest
 //       session keys play (their gas float rides on msg.value), claims disagree ──
 const sessionGas = parseEther("0.2"); // 0.2 USDC of native gas; the arena caps it at 0.25
 await send(B, USDC, usdcAbi, "approve", [dep.arena, stake]);
-const created2 = await send(B, dep.arena, arenaAbi, "createMatch", [0, deckB, sessionB.address, NO_PERMIT], sessionGas);
+const created2 = await send(B, dep.arena, arenaAbi, "createMatch", [0, deckB, sessionB.address, 0n, NO_PERMIT], sessionGas);
 const m2 = eventOf(created2, "MatchCreated").args.matchId;
-const joined2 = await send(A, dep.arena, arenaAbi, "joinMatch", [m2, deckA, sessionA.address, await usdcPermit(A, stake)], sessionGas);
+const joined2 = await send(A, dep.arena, arenaAbi, "joinMatch", [m2, deckA, sessionA.address, 0n, await usdcPermit(A, stake)], sessionGas);
 const metaEpoch2 = eventOf(joined2, "MatchJoined").args.metaEpoch;
 log(`match ${m2}  USDC Pauper, stake ${stake}, session keys, meta epoch ${metaEpoch2}`);
 const s2b = await playSeat(sessionB, m2, 0, [[30, 4, 0, -280], [150, 6, -90, -240]], 200);
