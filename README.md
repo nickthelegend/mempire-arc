@@ -84,7 +84,7 @@ ARC_ANVIL=…/arc-anvil ARC_FORGE=…/forge ARC_CAST=…/cast ./scripts/local-up
 | relay: Circle Gateway API + ERC-8004 (live testnet services) | 8/8 |
 | relay units (auth, memstore, locker, Kimi) | 14 · 13 · 10 · 46 |
 | simulation determinism, app typecheck, app build | pass |
-| indexer handlers / CRE workflow | 21/21 · see `cre/README.md` |
+| indexer handlers / CRE workflow | 21/21 · 43/43 |
 
 ---
 
