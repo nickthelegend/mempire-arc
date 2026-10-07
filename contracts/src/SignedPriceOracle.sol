@@ -5,25 +5,34 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {IPyth} from "./interfaces/IPyth.sol";
 
-/// @title LocalPriceOracle — the price oracle for a LOCAL chain.
-/// @notice Pyth's update model, on a chain Pyth does not serve: an update is a
+/// @title SignedPriceOracle — server-attested prices, verified on chain.
+/// @notice Pyth's pull model, for a chain Pyth does not serve: an update is a
 /// price the oracle's signer attested to, and the contract stores it only if
 /// the signature checks out. Anyone may *post* an update — the player does,
-/// inside their own mint transaction, exactly as with Pyth — but nobody can
-/// *invent* one.
+/// inside their own mint transaction, exactly as with Pyth — but nobody
+/// without the signer key can *invent* one.
 ///
-/// On Monad the game points at the real Pyth contract and Hermes-signed
-/// updates. Locally the relay signs live market quotes (it never signs a
-/// number it did not read from a market), and this contract verifies them.
+/// Pyth is deployed on Arc testnet but not on Arc mainnet, and Chainlink CRE
+/// serves Arc testnet only, so on Arc mainnet this is the game's price source.
+/// The relay signs only live market quotes it just read (OKX, then CoinGecko),
+/// with the quote's own timestamp as the publish time; it never signs a number
+/// it did not read from a market.
+///
+/// Trust model, stated plainly: the signer is trusted for *what* a price is.
+/// A compromised signer could stamp a wrong price on a newly minted card or
+/// tilt one ten-minute epoch of the market meta by at most ±15% of a fighter's
+/// stats. It can never move a stake, a pot, a card or a token: prices feed no
+/// payout anywhere in the game.
 ///
 /// Update encoding: `abi.encode(bytes32 id, int64 price, int32 expo,
 /// int64 emaPrice, uint64 publishTime, bytes signature)`, signed (EIP-191) over
 /// `keccak256(abi.encode(address(this), block.chainid, id, price, expo,
-/// emaPrice, publishTime))`. An update older than the stored one is ignored,
-/// like Pyth's.
-contract LocalPriceOracle is IPyth {
+/// emaPrice, publishTime))` — bound to this contract and chain, so an
+/// attestation can't be replayed on testnet ↔ mainnet. An update older than the
+/// stored one is ignored, like Pyth's. Updates are free: no native USDC is ever
+/// taken, so none can get stuck here.
+contract SignedPriceOracle is IPyth {
     address public immutable signer;
-    uint256 public constant FEE_PER_UPDATE = 1;
     /// A signed price may not claim to be from the future.
     uint256 public constant MAX_CLOCK_SKEW = 60;
 
@@ -46,12 +55,12 @@ contract LocalPriceOracle is IPyth {
         return keccak256(abi.encode(address(this), block.chainid, id, price, expo, ema, publishTime));
     }
 
-    function getUpdateFee(bytes[] calldata updateData) external pure returns (uint256) {
-        return updateData.length * FEE_PER_UPDATE;
+    function getUpdateFee(bytes[] calldata) external pure returns (uint256) {
+        return 0;
     }
 
     function updatePriceFeeds(bytes[] calldata updateData) external payable {
-        if (msg.value < updateData.length * FEE_PER_UPDATE) revert InsufficientFee();
+        if (msg.value != 0) revert InsufficientFee(); // free: refuse value rather than trap it
         for (uint256 i; i < updateData.length; ++i) {
             (bytes32 id, int64 price, int32 expo, int64 ema, uint64 publishTime, bytes memory sig) =
                 abi.decode(updateData[i], (bytes32, int64, int32, int64, uint64, bytes));

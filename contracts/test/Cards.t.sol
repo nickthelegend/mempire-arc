@@ -3,12 +3,13 @@ pragma solidity ^0.8.28;
 
 import {Base} from "./Base.t.sol";
 import {MempireCards} from "../src/MempireCards.sol";
+import {CircleUSDC} from "./utils/CircleUSDC.sol";
 
 contract CardsTest is Base {
-    function test_mintWithMon_recordsPythPrice_andPaysTreasury() public {
-        uint256 before = treasury.balance;
+    function test_mintWithUsdc_recordsOraclePrice_andPaysTreasury() public {
+        uint256 before = usdc.balanceOf(treasury);
         vm.prank(alice);
-        uint256 id = cards.mint{value: MINT_FEE + 1}(3, update(3, 6_950_000_000_000));
+        uint256 id = cards.mint{value: 1}(3, update(3, 6_950_000_000_000), noCardPermit());
         MempireCards.Card memory c = cards.card(id);
         assertEq(cards.ownerOf(id), alice);
         assertEq(c.coinId, 3);
@@ -16,42 +17,80 @@ contract CardsTest is Base {
         assertEq(c.mintPrice, 6_950_000_000_000);
         assertEq(c.mintExpo, -8);
         assertEq(c.archetype, cards.archetypeFor(feed(3)));
-        assertEq(treasury.balance - before, MINT_FEE);
+        assertEq(usdc.balanceOf(treasury) - before, MINT_FEE);
         assertEq(cards.coinCount(alice, 3), 1);
+    }
+
+    function test_mint_withPermit_oneTx() public {
+        (address carol, uint256 carolKey) = makeAddrAndKey("carol");
+        CircleUSDC.mint(carol, 1e6);
+        vm.deal(carol, 1 ether);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                carol,
+                address(cards),
+                MINT_FEE,
+                usdc.nonces(carol),
+                deadline
+            )
+        );
+        (uint8 v, bytes32 r, bytes32 s_) =
+            vm.sign(carolKey, keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), structHash)));
+        vm.prank(carol);
+        uint256 id = cards.mint{value: 1}(2, update(2, 5), MempireCards.Permit(deadline, v, r, s_));
+        assertEq(cards.ownerOf(id), carol);
+        assertEq(usdc.balanceOf(carol), 1e6 - MINT_FEE);
+    }
+
+    function test_mintFee_isCapped_andOracleOwnerSettable() public {
+        vm.startPrank(admin);
+        vm.expectRevert(MempireCards.WrongPayment.selector);
+        cards.setMintFee(5e6 + 1);
+        cards.setMintFee(0); // free mints: no USDC pulled at all
+        cards.setPriceOracle(pyth);
+        vm.stopPrank();
+        uint256 before = usdc.balanceOf(alice);
+        mintAs(alice, 1);
+        assertEq(usdc.balanceOf(alice), before);
+        vm.prank(alice);
+        vm.expectRevert();
+        cards.setPriceOracle(pyth);
     }
 
     function test_mint_wrongPayment_reverts() public {
         vm.prank(alice);
         vm.expectRevert(MempireCards.WrongPayment.selector);
-        cards.mint{value: MINT_FEE}(3, update(3, 1));
+        cards.mint{value: 0}(3, update(3, 1), noCardPermit());
     }
 
     function test_mint_withoutFreshPrice_reverts() public {
         bytes[] memory none = new bytes[](0);
         vm.prank(alice);
         vm.expectRevert(bytes("PriceFeedNotFound"));
-        cards.mint{value: MINT_FEE}(3, none);
+        cards.mint(3, none, noCardPermit());
     }
 
     function test_mint_stalePrice_reverts() public {
         vm.prank(alice);
-        cards.mint{value: MINT_FEE + 1}(3, update(3, 100));
+        cards.mint{value: 1}(3, update(3, 100), noCardPermit());
         vm.warp(block.timestamp + 10 minutes);
         bytes[] memory none = new bytes[](0);
         vm.prank(alice);
         vm.expectRevert(bytes("StalePrice"));
-        cards.mint{value: MINT_FEE}(3, none);
+        cards.mint(3, none, noCardPermit());
     }
 
-    function test_mintWithMempire_takesTokensNotMon() public {
+    function test_mintWithMempire_takesTokensNotUsdc() public {
         uint256 tBefore = token.balanceOf(treasury);
-        uint256 monBefore = treasury.balance;
+        uint256 usdcBefore = usdc.balanceOf(treasury);
         vm.startPrank(alice);
         token.approve(address(cards), type(uint256).max);
         cards.mintWithMempire{value: 1}(5, update(5, 42));
         vm.stopPrank();
         assertEq(token.balanceOf(treasury) - tBefore, 250 ether);
-        assertEq(treasury.balance, monBefore);
+        assertEq(usdc.balanceOf(treasury), usdcBefore);
     }
 
     function test_registerCoins_batch_andPriceAgeBounds() public {
@@ -73,10 +112,10 @@ contract CardsTest is Base {
         vm.prank(alice);
         bytes[] memory u = new bytes[](1);
         u[0] = abi.encode(f[0], int64(18_000_000_000), int32(-8));
-        cards.mint{value: MINT_FEE + 1}(ROSTER, u);
+        cards.mint{value: 1}(ROSTER, u, noCardPermit());
         vm.warp(block.timestamp + 3 days);
         vm.prank(alice);
-        cards.mint{value: MINT_FEE}(ROSTER, new bytes[](0));
+        cards.mint(ROSTER, new bytes[](0), noCardPermit());
 
         vm.startPrank(admin);
         vm.expectRevert(MempireCards.BadPriceAge.selector);
@@ -91,7 +130,7 @@ contract CardsTest is Base {
         cards.setCoinActive(2, false);
         vm.prank(alice);
         vm.expectRevert(MempireCards.CoinInactive.selector);
-        cards.mint{value: MINT_FEE + 1}(2, update(2, 1));
+        cards.mint{value: 1}(2, update(2, 1), noCardPermit());
     }
 
     function test_registerCoin_rejectsDuplicateFeed_andIsOwnerOnly() public {
@@ -126,9 +165,9 @@ contract CardsTest is Base {
 
     function test_merge_levelsUp_burnsDuplicate_chargesPerLevel() public {
         vm.startPrank(alice);
-        uint256 keep = cards.mint{value: MINT_FEE + 1}(1, update(1, 1));
-        uint256 d1 = cards.mint{value: MINT_FEE + 1}(1, update(1, 1));
-        uint256 d2 = cards.mint{value: MINT_FEE + 1}(1, update(1, 1));
+        uint256 keep = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
+        uint256 d1 = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
+        uint256 d2 = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
         token.approve(address(cards), type(uint256).max);
 
         uint256 t0 = token.balanceOf(treasury);
@@ -147,8 +186,8 @@ contract CardsTest is Base {
 
     function test_merge_rejectsSelf_differentCoins_foreignCards() public {
         vm.startPrank(alice);
-        uint256 a = cards.mint{value: MINT_FEE + 1}(1, update(1, 1));
-        uint256 b = cards.mint{value: MINT_FEE + 1}(2, update(2, 1));
+        uint256 a = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
+        uint256 b = cards.mint{value: 1}(2, update(2, 1), noCardPermit());
         token.approve(address(cards), type(uint256).max);
         vm.expectRevert(MempireCards.SameCard.selector);
         cards.merge(a, a);
@@ -157,7 +196,7 @@ contract CardsTest is Base {
         vm.stopPrank();
 
         vm.prank(bob);
-        uint256 c = cards.mint{value: MINT_FEE + 1}(1, update(1, 1));
+        uint256 c = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
         vm.prank(alice);
         vm.expectRevert(MempireCards.NotOwner.selector);
         cards.merge(a, c);
@@ -166,13 +205,13 @@ contract CardsTest is Base {
     function test_merge_capsAtTen() public {
         vm.startPrank(alice);
         token.approve(address(cards), type(uint256).max);
-        uint256 keep = cards.mint{value: MINT_FEE + 1}(4, update(4, 1));
+        uint256 keep = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
         for (uint256 i; i < 9; ++i) {
-            uint256 d = cards.mint{value: MINT_FEE + 1}(4, update(4, 1));
+            uint256 d = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
             cards.merge(keep, d);
         }
         assertEq(cards.card(keep).level, 10);
-        uint256 extra = cards.mint{value: MINT_FEE + 1}(4, update(4, 1));
+        uint256 extra = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
         vm.expectRevert(MempireCards.MaxLevel.selector);
         cards.merge(keep, extra);
         vm.stopPrank();

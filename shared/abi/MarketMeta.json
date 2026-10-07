@@ -69,7 +69,7 @@
   },
   {
     "type": "function",
-    "name": "SOURCE_PYTH",
+    "name": "SOURCE_ORACLE",
     "inputs": [],
     "outputs": [
       {
@@ -269,6 +269,19 @@
   },
   {
     "type": "function",
+    "name": "oracle",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPyth"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -295,7 +308,7 @@
   },
   {
     "type": "function",
-    "name": "postFromPyth",
+    "name": "postFromOracle",
     "inputs": [
       {
         "name": "coinIds",
@@ -321,19 +334,6 @@
       }
     ],
     "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "pyth",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IPyth"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -370,10 +370,10 @@
   },
   {
     "type": "function",
-    "name": "setPyth",
+    "name": "setOracle",
     "inputs": [
       {
-        "name": "pyth_",
+        "name": "oracle_",
         "type": "address",
         "internalType": "contract IPyth"
       },
@@ -483,6 +483,25 @@
   },
   {
     "type": "event",
+    "name": "OracleChanged",
+    "inputs": [
+      {
+        "name": "oracle",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "cards",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferStarted",
     "inputs": [
       {
@@ -521,25 +540,6 @@
   },
   {
     "type": "event",
-    "name": "PythChanged",
-    "inputs": [
-      {
-        "name": "pyth",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "cards",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "WorkflowOwnerChanged",
     "inputs": [
       {
@@ -568,6 +568,11 @@
   },
   {
     "type": "error",
+    "name": "OracleNotSet",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "OutOfBounds",
     "inputs": []
   },
@@ -592,11 +597,6 @@
         "internalType": "address"
       }
     ]
-  },
-  {
-    "type": "error",
-    "name": "PythNotSet",
-    "inputs": []
   },
   {
     "type": "error",

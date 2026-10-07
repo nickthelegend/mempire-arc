@@ -75,7 +75,7 @@ contract MarketMetaTest is Base {
         return abi.encode(feed(coinId), spot, int32(-8), ema);
     }
 
-    function test_postFromPyth_derivesMomentum_inTheSameTx() public {
+    function test_postFromOracle_derivesMomentum_inTheSameTx() public {
         vm.warp(1_000_000);
         uint16[] memory ids = new uint16[](3);
         ids[0] = 0;
@@ -88,45 +88,45 @@ contract MarketMetaTest is Base {
         address poster = makeAddr("keeper");
         vm.deal(poster, 1 ether);
         vm.prank(poster);
-        (uint64 epoch, int16[] memory bps) = meta.postFromPyth{value: 1 ether}(ids, u);
+        (uint64 epoch, int16[] memory bps) = meta.postFromOracle{value: 1 ether}(ids, u);
         assertEq(uint256(epoch), uint256(1666));
         assertEq(int256(bps[0]), int256(1000));
         assertEq(int256(bps[1]), int256(-1500));
         assertEq(int256(bps[2]), int256(0));
         assertEq(int256(meta.modifierBps(epoch, 0)), int256(1000));
         assertEq(meta.currentEpoch(), epoch);
-        assertEq(uint256(meta.epochSource(epoch)), uint256(meta.SOURCE_PYTH()));
+        assertEq(uint256(meta.epochSource(epoch)), uint256(meta.SOURCE_ORACLE()));
         // only the 3-wei update fee was kept
         assertEq(poster.balance, 1 ether - 3);
     }
 
-    function test_postFromPyth_oneEpochPerWindow_andCREShareTheClock() public {
+    function test_postFromOracle_oneEpochPerWindow_andCREShareTheClock() public {
         vm.warp(1_200_000);
         uint16[] memory ids = new uint16[](1);
         bytes[] memory u = new bytes[](1);
         u[0] = _upd(0, 101e8, 100e8);
-        meta.postFromPyth{value: 1}(ids, u);
+        meta.postFromOracle{value: 1}(ids, u);
         vm.expectRevert(MarketMeta.StaleEpoch.selector);
-        meta.postFromPyth{value: 1}(ids, u);
+        meta.postFromOracle{value: 1}(ids, u);
         // CRE cannot write the same window either.
         vm.prank(forwarder);
         vm.expectRevert(MarketMeta.StaleEpoch.selector);
         meta.onReport("", _report(uint64(2000), 0, 0));
         vm.warp(1_200_000 + 600);
-        meta.postFromPyth{value: 1}(ids, u);
+        meta.postFromOracle{value: 1}(ids, u);
     }
 
-    function test_postFromPyth_refusesStaleOrMissingPrice_andUnderpayment() public {
+    function test_postFromOracle_refusesStaleOrMissingPrice_andUnderpayment() public {
         vm.warp(2_000_000);
         uint16[] memory ids = new uint16[](1);
         ids[0] = 4;
         bytes[] memory none = new bytes[](0);
         vm.expectRevert(bytes("PriceFeedNotFound"));
-        meta.postFromPyth(ids, none);
+        meta.postFromOracle(ids, none);
         bytes[] memory u = new bytes[](1);
         u[0] = _upd(4, 1e8, 1e8);
         vm.expectRevert(MarketMeta.WrongPayment.selector);
-        meta.postFromPyth{value: 0}(ids, u);
+        meta.postFromOracle{value: 0}(ids, u);
     }
 
     function test_momentumBps_bounds() public view {
@@ -136,13 +136,21 @@ contract MarketMetaTest is Base {
         assertEq(int256(meta.momentumBps(990, 1_000)), int256(-200));
     }
 
-    function test_postFromPyth_feedsTheSimulationEpochAtJoin() public {
+    function test_postFromOracle_feedsTheSimulationEpochAtJoin() public {
         vm.warp(3_000_000);
         uint16[] memory ids = new uint16[](1);
         bytes[] memory u = new bytes[](1);
         u[0] = _upd(0, 103e8, 100e8);
-        (uint64 epoch,) = meta.postFromPyth{value: 1}(ids, u);
-        (uint64 id,,) = startMonMatch(0);
+        (uint64 epoch,) = meta.postFromOracle{value: 1}(ids, u);
+        (uint64 id,,) = startMatch(0);
         assertEq(uint256(arena.getMatch(id).metaEpoch), uint256(epoch));
+    }
+
+    /// Arc mainnet has no CRE: deployed with forwarder 0, onReport accepts nothing.
+    function test_noForwarder_acceptsNoReports() public {
+        MarketMeta bare = new MarketMeta(admin, address(0));
+        vm.prank(address(0));
+        vm.expectRevert(MarketMeta.NotForwarder.selector);
+        bare.onReport("", abi.encode(uint64(1), new uint16[](0), new int16[](0)));
     }
 }

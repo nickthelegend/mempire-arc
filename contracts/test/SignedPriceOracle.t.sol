@@ -3,18 +3,18 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {LocalPriceOracle} from "../src/LocalPriceOracle.sol";
+import {SignedPriceOracle} from "../src/SignedPriceOracle.sol";
 import {IPyth} from "../src/interfaces/IPyth.sol";
 
-contract LocalPriceOracleTest is Test {
-    LocalPriceOracle internal oracle;
+contract SignedPriceOracleTest is Test {
+    SignedPriceOracle internal oracle;
     uint256 internal signerKey;
+    address internal signer;
     bytes32 internal constant FEED = keccak256("BTC/USD");
 
     function setUp() public {
-        address signer;
         (signer, signerKey) = makeAddrAndKey("oracle");
-        oracle = new LocalPriceOracle(signer);
+        oracle = new SignedPriceOracle(signer);
         vm.warp(1_700_000_000);
     }
 
@@ -27,7 +27,7 @@ contract LocalPriceOracleTest is Test {
     function _post(bytes memory u) internal {
         bytes[] memory us = new bytes[](1);
         us[0] = u;
-        oracle.updatePriceFeeds{value: 1}(us);
+        oracle.updatePriceFeeds(us);
     }
 
     function test_signedUpdate_isStored_andReadBack() public {
@@ -44,8 +44,8 @@ contract LocalPriceOracleTest is Test {
         bytes memory forged = _update(other, 1, 1, uint64(block.timestamp));
         bytes[] memory us = new bytes[](1);
         us[0] = forged;
-        vm.expectRevert(LocalPriceOracle.BadSignature.selector);
-        oracle.updatePriceFeeds{value: 1}(us);
+        vm.expectRevert(SignedPriceOracle.BadSignature.selector);
+        oracle.updatePriceFeeds(us);
     }
 
     function test_aTamperedPrice_isRefused() public {
@@ -54,13 +54,13 @@ contract LocalPriceOracleTest is Test {
             abi.decode(u, (bytes32, int64, int32, int64, uint64, bytes));
         bytes[] memory us = new bytes[](1);
         us[0] = abi.encode(id, int64(999e8), expo, ema, t, sig);
-        vm.expectRevert(LocalPriceOracle.BadSignature.selector);
-        oracle.updatePriceFeeds{value: 1}(us);
+        vm.expectRevert(SignedPriceOracle.BadSignature.selector);
+        oracle.updatePriceFeeds(us);
     }
 
     function test_freshnessIsThePublishTime_notThePostTime() public {
         _post(_update(signerKey, 100e8, 100e8, uint64(block.timestamp - 200)));
-        vm.expectRevert(LocalPriceOracle.StalePrice.selector);
+        vm.expectRevert(SignedPriceOracle.StalePrice.selector);
         oracle.getPriceNoOlderThan(FEED, 120);
         oracle.getPriceNoOlderThan(FEED, 300);
     }
@@ -68,20 +68,35 @@ contract LocalPriceOracleTest is Test {
     function test_futureAndOlderUpdates() public {
         bytes[] memory us = new bytes[](1);
         us[0] = _update(signerKey, 1, 1, uint64(block.timestamp + 3600));
-        vm.expectRevert(LocalPriceOracle.FromTheFuture.selector);
-        oracle.updatePriceFeeds{value: 1}(us);
+        vm.expectRevert(SignedPriceOracle.FromTheFuture.selector);
+        oracle.updatePriceFeeds(us);
 
         _post(_update(signerKey, 200e8, 200e8, uint64(block.timestamp)));
         _post(_update(signerKey, 100e8, 100e8, uint64(block.timestamp - 10))); // older: ignored
         assertEq(int256(oracle.getPriceNoOlderThan(FEED, 60).price), int256(200e8));
     }
 
-    function test_unknownFeed_andFee() public {
-        vm.expectRevert(LocalPriceOracle.PriceFeedNotFound.selector);
+    function test_unknownFeed_andFreeUpdates() public {
+        vm.expectRevert(SignedPriceOracle.PriceFeedNotFound.selector);
         oracle.getPriceNoOlderThan(keccak256("nope"), 60);
         bytes[] memory us = new bytes[](1);
         us[0] = _update(signerKey, 1, 1, uint64(block.timestamp));
-        vm.expectRevert(LocalPriceOracle.InsufficientFee.selector);
-        oracle.updatePriceFeeds{value: 0}(us);
+        assertEq(oracle.getUpdateFee(us), 0);
+        // Updates are free; value sent along is refused rather than trapped.
+        vm.deal(address(this), 1);
+        vm.expectRevert(SignedPriceOracle.InsufficientFee.selector);
+        oracle.updatePriceFeeds{value: 1}(us);
+        oracle.updatePriceFeeds(us);
+    }
+
+    function test_signatureIsBoundToContractAndChain() public {
+        bytes[] memory us = new bytes[](1);
+        us[0] = _update(signerKey, 1, 1, uint64(block.timestamp));
+        SignedPriceOracle other = new SignedPriceOracle(signer);
+        vm.expectRevert(SignedPriceOracle.BadSignature.selector);
+        other.updatePriceFeeds(us); // same signer, another deployment
+        vm.chainId(5042); // the same attestation can't cross testnet -> mainnet
+        vm.expectRevert(SignedPriceOracle.BadSignature.selector);
+        oracle.updatePriceFeeds(us);
     }
 }

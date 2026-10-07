@@ -2,13 +2,14 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MempireToken} from "../src/MempireToken.sol";
 import {MempireCards} from "../src/MempireCards.sol";
 import {MempireArena} from "../src/MempireArena.sol";
 import {MarketMeta} from "../src/MarketMeta.sol";
 import {IPyth} from "../src/interfaces/IPyth.sol";
 import {MockPyth} from "./mocks/MockPyth.sol";
-import {MockAUSD} from "./mocks/MockAUSD.sol";
+import {CircleUSDC, IFiatToken} from "./utils/CircleUSDC.sol";
 
 abstract contract Base is Test {
     MempireToken internal token;
@@ -16,7 +17,8 @@ abstract contract Base is Test {
     MempireArena internal arena;
     MarketMeta internal meta;
     MockPyth internal pyth;
-    MockAUSD internal ausd;
+    /// Circle's FiatToken v2.2 at Arc's USDC address, with Arc's EIP-712 domain.
+    IFiatToken internal usdc;
 
     address internal admin = makeAddr("admin");
     address internal treasury = makeAddr("treasury");
@@ -29,7 +31,7 @@ abstract contract Base is Test {
     address internal aliceSession = makeAddr("aliceSession");
     address internal bobSession = makeAddr("bobSession");
 
-    uint256 internal constant MINT_FEE = 0.01 ether;
+    uint256 internal constant MINT_FEE = 50_000; // 0.05 USDC, 6 decimals
     uint16 internal constant ROSTER = 12;
 
     function setUp() public virtual {
@@ -37,16 +39,18 @@ abstract contract Base is Test {
         (bob, bobKey) = makeAddrAndKey("bob");
 
         pyth = new MockPyth();
-        ausd = new MockAUSD();
+        usdc = CircleUSDC.deploy();
         token = new MempireToken(admin);
-        cards = new MempireCards(admin, token, IPyth(address(pyth)), treasury, MINT_FEE, 60, "https://api.mempire.fun/nft/");
+        cards = new MempireCards(
+            admin, token, IERC20(address(usdc)), IPyth(address(pyth)), treasury, MINT_FEE, 60, "https://api.mempire.fun/nft/"
+        );
         meta = new MarketMeta(admin, forwarder);
-        arena = new MempireArena(admin, cards, address(ausd), meta, treasury);
+        arena = new MempireArena(admin, cards, address(usdc), meta, treasury, 3);
 
         vm.startPrank(admin);
         cards.setArena(address(arena));
         cards.setRelayer(relayer);
-        meta.setPyth(IPyth(address(pyth)), cards);
+        meta.setOracle(IPyth(address(pyth)), cards);
         for (uint16 i; i < ROSTER; ++i) {
             cards.registerCoin(feed(i), string.concat("C", vm.toString(i)), 120);
         }
@@ -56,11 +60,27 @@ abstract contract Base is Test {
         token.transfer(bob, 100_000 ether);
         vm.stopPrank();
 
-        vm.deal(alice, 100 ether);
-        vm.deal(bob, 100 ether);
-        ausd.mint(alice, 1_000e6);
-        ausd.mint(bob, 1_000e6);
+        // Native USDC (18 decimals) for session-key gas; ERC-20 USDC (6 decimals) for stakes and mints.
+        vm.deal(alice, 10 ether);
+        vm.deal(bob, 10 ether);
+        CircleUSDC.mint(alice, 1_000e6);
+        CircleUSDC.mint(bob, 1_000e6);
+        for (uint256 i; i < 2; ++i) {
+            address who = i == 0 ? alice : bob;
+            vm.startPrank(who);
+            usdc.approve(address(arena), type(uint256).max);
+            usdc.approve(address(cards), type(uint256).max);
+            vm.stopPrank();
+        }
     }
+
+    /// Mint a card as `who`, paying the USDC fee and the oracle's 1-wei update fee.
+    function mintAs(address who, uint16 coinId) internal returns (uint256 id) {
+        vm.prank(who);
+        id = cards.mint{value: 1}(coinId, update(coinId, 1), noCardPermit());
+    }
+
+    function noCardPermit() internal pure returns (MempireCards.Permit memory p) {}
 
     function feed(uint16 i) internal pure returns (bytes32) {
         return keccak256(abi.encode("feed", i));
@@ -85,14 +105,14 @@ abstract contract Base is Test {
 
     function noPermit() internal pure returns (MempireArena.Permit memory p) {}
 
-    /// Alice opens a MON match, Bob joins; returns the match id.
-    function startMonMatch(uint8 tier) internal returns (uint64 id, uint256[] memory aDeck, uint256[] memory bDeck) {
+    /// Alice opens a USDC match, Bob joins, both arm a session key with 0.05
+    /// native USDC of gas; returns the match id.
+    function startMatch(uint8 tier) internal returns (uint64 id, uint256[] memory aDeck, uint256[] memory bDeck) {
         aDeck = giveStarter(alice);
         bDeck = giveStarter(bob);
-        uint128 stake = arena.stakeFor(address(0), tier);
         vm.prank(alice);
-        id = arena.createMatch{value: stake + 0.05 ether}(tier, address(0), aDeck, aliceSession, noPermit());
+        id = arena.createMatch{value: 0.05 ether}(tier, aDeck, aliceSession, noPermit());
         vm.prank(bob);
-        arena.joinMatch{value: stake + 0.05 ether}(id, bDeck, bobSession, noPermit());
+        arena.joinMatch{value: 0.05 ether}(id, bDeck, bobSession, noPermit());
     }
 }

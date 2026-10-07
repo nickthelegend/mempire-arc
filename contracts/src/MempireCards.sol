@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -11,8 +12,9 @@ import {IArenaView} from "./interfaces/IArenaView.sol";
 
 /// @title Mempire fighters — every card is an ERC-721 you own.
 /// @notice The roster is the market: each card is a fighter for one real asset
-/// (a major, a memecoin or a tokenised stock), identified by its Pyth price
-/// feed. Holding the asset is never required and never touched — a card is a
+/// (a major, a memecoin or a tokenised stock), identified by its price feed id
+/// (Pyth's ids, so the same asset means the same thing to every oracle the
+/// game can point at). Holding the asset is never required and never touched — a card is a
 /// character, not collateral.
 ///
 /// Power is earned, never bought. A card starts at level 1. Wins pay chests,
@@ -32,12 +34,15 @@ contract MempireCards is ERC721, Ownable2Step {
 
     /// Merge fee per current level: 1→2 costs 100, 9→10 costs 900.
     uint256 public constant MERGE_FEE_PER_LEVEL = 100 ether;
-    /// A card bought with $MEMPIRE instead of MON.
+    /// A card bought with $MEMPIRE instead of USDC.
     uint256 public constant MINT_FEE_MEMPIRE = 250 ether;
     /// Skip a chest's unlock timer.
     uint256 public constant SKIP_FEE = 25 ether;
     /// Buy a golden chest outright. It lands even when every slot is full.
     uint256 public constant CHEST_PRICE = 100 ether;
+
+    /// The most the owner can ever charge for a mint: 5 USDC (6 decimals).
+    uint256 public constant MAX_MINT_FEE = 5e6;
 
     /// The tightest and loosest price-age bounds a fighter may be registered
     /// with. Crypto trades around the clock and uses the tight end; a stock's
@@ -74,7 +79,7 @@ contract MempireCards is ERC721, Ownable2Step {
         uint8 level;
         uint8 archetype;
         uint64 lockedBy; // match id that last locked it; live only while that match holds cards
-        int64 mintPrice; // Pyth price at mint (0 for starter and chest cards)
+        int64 mintPrice; // oracle price at mint (0 for starter and chest cards)
         int32 mintExpo;
     }
 
@@ -86,12 +91,24 @@ contract MempireCards is ERC721, Ownable2Step {
         uint64 revealBlock; // the future block whose hash decides the drop
     }
 
+    struct Permit {
+        uint256 deadline; // 0 = no permit; an allowance already exists
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
     IERC20 public immutable mempire;
-    IPyth public immutable pyth;
+    /// USDC on Arc (the ERC-20 interface, 6 decimals): what a mint costs.
+    IERC20 public immutable usdc;
+    /// A Pyth-compatible price oracle: Pyth itself where Pyth is deployed (Arc
+    /// testnet), the game's SignedPriceOracle where it is not (Arc mainnet).
+    IPyth public oracle;
 
     address public treasury;
     address public arena;
     address public relayer;
+    /// USDC, 6 decimals.
     uint256 public mintFee;
     /// Divides every chest timer. 1 on a real deployment; 60 on testnet so a
     /// judge sees a three-hour chest open in three minutes.
@@ -130,6 +147,7 @@ contract MempireCards is ERC721, Ownable2Step {
     event ChestOpening(uint256 indexed chestId, uint64 revealBlock);
     event ChestOpened(uint256 indexed chestId, address indexed owner, bytes32 seed, uint256[] cardIds);
     event ConfigChanged();
+    event OracleChanged(address oracle);
 
     // Card sources, for the indexer.
     uint8 internal constant SRC_MINT = 0;
@@ -158,19 +176,21 @@ contract MempireCards is ERC721, Ownable2Step {
     error ChestNotReady();
     error AnotherChestUnlocking();
     error TooEarly();
-    error TransferFailed();
 
     constructor(
         address owner_,
         IERC20 mempire_,
-        IPyth pyth_,
+        IERC20 usdc_,
+        IPyth oracle_,
         address treasury_,
         uint256 mintFee_,
         uint32 timeScale_,
         string memory baseURI_
     ) ERC721("Mempire Fighter", "MFTR") Ownable(owner_) {
+        if (mintFee_ > MAX_MINT_FEE) revert WrongPayment();
         mempire = mempire_;
-        pyth = pyth_;
+        usdc = usdc_;
+        oracle = oracle_;
         treasury = treasury_;
         mintFee = mintFee_;
         timeScale = timeScale_ == 0 ? 1 : timeScale_;
@@ -195,8 +215,17 @@ contract MempireCards is ERC721, Ownable2Step {
     }
 
     function setMintFee(uint256 fee) external onlyOwner {
+        if (fee > MAX_MINT_FEE) revert WrongPayment();
         mintFee = fee;
         emit ConfigChanged();
+    }
+
+    /// Point mints at another Pyth-compatible oracle (e.g. Pyth itself, once
+    /// it serves Arc mainnet). Prices only gate and stamp mints; they never
+    /// move a stake.
+    function setPriceOracle(IPyth oracle_) external onlyOwner {
+        oracle = oracle_;
+        emit OracleChanged(address(oracle_));
     }
 
     function setBaseURI(string calldata uri) external onlyOwner {
@@ -244,22 +273,36 @@ contract MempireCards is ERC721, Ownable2Step {
 
     // ─────────────────────────────────────────────────────────────── minting
 
-    /// Mint a fighter for MON. The caller posts a fresh Pyth update for the
+    /// Mint a fighter for USDC. The caller posts a fresh price update for the
     /// asset in the same transaction; the card records the price it was minted
     /// at, and an asset with no live price cannot be minted at all — that is
-    /// the eligibility gate.
-    function mint(uint16 coinId, bytes[] calldata priceUpdate) external payable returns (uint256 id) {
-        uint256 updateFee = pyth.getUpdateFee(priceUpdate);
-        if (msg.value != mintFee + updateFee) revert WrongPayment();
+    /// the eligibility gate. The fee is pulled with an allowance or an EIP-2612
+    /// permit signed in the same breath; msg.value (native USDC) covers only
+    /// the oracle's update fee.
+    function mint(uint16 coinId, bytes[] calldata priceUpdate, Permit calldata permit)
+        external
+        payable
+        returns (uint256 id)
+    {
+        uint256 updateFee = oracle.getUpdateFee(priceUpdate);
+        if (msg.value != updateFee) revert WrongPayment();
         (int64 price, int32 expo) = _postPrice(coinId, priceUpdate, updateFee);
-        _pay(treasury, mintFee);
+        uint256 fee = mintFee;
+        if (fee != 0) {
+            if (permit.deadline != 0) {
+                try IERC20Permit(address(usdc)).permit(
+                    msg.sender, address(this), fee, permit.deadline, permit.v, permit.r, permit.s
+                ) {} catch {}
+            }
+            usdc.safeTransferFrom(msg.sender, treasury, fee);
+        }
         id = _mintCard(msg.sender, coinId, SRC_MINT, price, expo);
     }
 
-    /// The same card for 250 $MEMPIRE instead of MON. One price or the other,
+    /// The same card for 250 $MEMPIRE instead of USDC. One price or the other,
     /// never both; msg.value covers only the oracle's update fee.
     function mintWithMempire(uint16 coinId, bytes[] calldata priceUpdate) external payable returns (uint256 id) {
-        uint256 updateFee = pyth.getUpdateFee(priceUpdate);
+        uint256 updateFee = oracle.getUpdateFee(priceUpdate);
         if (msg.value != updateFee) revert WrongPayment();
         (int64 price, int32 expo) = _postPrice(coinId, priceUpdate, updateFee);
         mempire.safeTransferFrom(msg.sender, treasury, MINT_FEE_MEMPIRE);
@@ -268,7 +311,7 @@ contract MempireCards is ERC721, Ownable2Step {
 
     /// The starter deck: eight distinct fighters, once per address, paid for by
     /// the game's relayer so a brand-new passkey account holds a playable deck
-    /// before it has ever held MON.
+    /// before it has ever held a cent.
     function mintStarter(address to, uint16[] calldata coinIds) external returns (uint256[] memory ids) {
         if (msg.sender != relayer) revert NotRelayer();
         if (starterClaimed[to]) revert StarterTaken();
@@ -289,8 +332,8 @@ contract MempireCards is ERC721, Ownable2Step {
     {
         Coin storage c = _coin(coinId);
         if (!c.active) revert CoinInactive();
-        pyth.updatePriceFeeds{value: updateFee}(priceUpdate);
-        IPyth.Price memory p = pyth.getPriceNoOlderThan(c.feedId, c.maxPriceAge);
+        oracle.updatePriceFeeds{value: updateFee}(priceUpdate);
+        IPyth.Price memory p = oracle.getPriceNoOlderThan(c.feedId, c.maxPriceAge);
         return (p.price, p.expo);
     }
 
@@ -461,14 +504,14 @@ contract MempireCards is ERC721, Ownable2Step {
 
         c.state = CHEST_OPENED;
         activeChests[msg.sender] -= 1;
-        uint256 roster = _coins.length;
+        uint256 rosterSize = _coins.length;
         for (uint256 i; i < n; ++i) {
             uint256 r = uint256(keccak256(abi.encode(seed, i)));
             uint16 coinId;
             if (ownedLen > 0 && r % 100 < 65) {
                 coinId = owned[(r >> 8) % ownedLen];
             } else {
-                coinId = uint16((r >> 8) % roster);
+                coinId = uint16((r >> 8) % rosterSize);
             }
             ids[i] = _mintCard(msg.sender, coinId, SRC_CHEST, 0, 0);
         }
@@ -531,12 +574,6 @@ contract MempireCards is ERC721, Ownable2Step {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireOwned(tokenId);
         return string.concat(baseURI, tokenId.toString());
-    }
-
-    function _pay(address to, uint256 amount) internal {
-        if (amount == 0) return;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
     }
 
     function _coin(uint16 coinId) internal view returns (Coin storage) {

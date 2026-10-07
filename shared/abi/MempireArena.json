@@ -13,7 +13,7 @@
         "internalType": "contract MempireCards"
       },
       {
-        "name": "ausd_",
+        "name": "usdc_",
         "type": "address",
         "internalType": "address"
       },
@@ -26,6 +26,11 @@
         "name": "treasury_",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "maxTier_",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "nonpayable"
@@ -201,6 +206,19 @@
   },
   {
     "type": "function",
+    "name": "TIERS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "WIN_REWARD",
     "inputs": [],
     "outputs": [
@@ -218,19 +236,6 @@
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "ausd",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -325,11 +330,6 @@
         "name": "tier",
         "type": "uint8",
         "internalType": "uint8"
-      },
-      {
-        "name": "currency",
-        "type": "address",
-        "internalType": "address"
       },
       {
         "name": "cardIds",
@@ -616,6 +616,19 @@
   },
   {
     "type": "function",
+    "name": "maxTier",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "mempire",
     "inputs": [],
     "outputs": [
@@ -645,11 +658,6 @@
     "name": "owed",
     "inputs": [
       {
-        "name": "currency",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "player",
         "type": "address",
         "internalType": "address"
@@ -673,6 +681,19 @@
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "paused",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -796,6 +817,24 @@
   },
   {
     "type": "function",
+    "name": "setLimits",
+    "inputs": [
+      {
+        "name": "maxTier_",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "paused_",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMarketMeta",
     "inputs": [
       {
@@ -853,11 +892,6 @@
     "name": "stakeFor",
     "inputs": [
       {
-        "name": "currency",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "tier",
         "type": "uint8",
         "internalType": "uint8"
@@ -870,7 +904,7 @@
         "internalType": "uint128"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -913,14 +947,21 @@
   },
   {
     "type": "function",
-    "name": "withdraw",
-    "inputs": [
+    "name": "usdc",
+    "inputs": [],
+    "outputs": [
       {
-        "name": "currency",
+        "name": "",
         "type": "address",
         "internalType": "address"
       }
     ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -990,6 +1031,25 @@
     "type": "event",
     "name": "ConfigChanged",
     "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LimitsChanged",
+    "inputs": [
+      {
+        "name": "maxTier",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "paused",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
     "anonymous": false
   },
   {
@@ -1401,6 +1461,11 @@
   },
   {
     "type": "error",
+    "name": "Paused",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "PowerMismatch",
     "inputs": []
   },
@@ -1423,6 +1488,11 @@
   {
     "type": "error",
     "name": "SelfMatch",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TierClosed",
     "inputs": []
   },
   {

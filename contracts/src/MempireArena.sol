@@ -10,8 +10,11 @@ import {IArenaView} from "./interfaces/IArenaView.sol";
 import {MempireCards} from "./MempireCards.sol";
 import {MarketMeta} from "./MarketMeta.sol";
 
-/// @title The arena — escrowed 1v1 pots, a play log on Monad, two-claim settlement.
-/// @notice Two players each put up the same stake, in MON or AUSD. The match is
+/// @title The arena — escrowed 1v1 USDC pots, a play log on Arc, two-claim settlement.
+/// @notice Two players each put up the same stake in USDC (Arc's ERC-20
+/// interface at 0x3600…0000, 6 decimals), pulled with an EIP-2612 permit in the
+/// stake transaction itself. Gas on Arc is the same USDC, so a player holds one
+/// token for everything. The match is
 /// a deterministic simulation both clients run in lockstep; every card drop is
 /// also written here as it happens, by a per-match session key, so the match is
 /// on chain while it is being played rather than summarised afterwards.
@@ -46,8 +49,11 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     uint32 public constant MAX_TICK = 5_000;
     uint16 public constant MAX_PLAYS_PER_SEAT = 200;
     uint8 public constant DECK_SIZE = 8;
-    /// Most MON a create/join may forward to its session key for gas.
-    uint256 public constant MAX_SESSION_GAS = 0.5 ether;
+    /// Most native USDC (18 decimals: 0.25 USDC) a create/join may forward to
+    /// its session key for gas. A whole match of plays costs a few cents on Arc.
+    uint256 public constant MAX_SESSION_GAS = 0.25 ether;
+    /// The four stake tiers, in USDC (6 decimals): $1, $5, $25, $100.
+    uint8 public constant TIERS = 4;
 
     /// $MEMPIRE paid for a won match, for a player's first sixteen wins only:
     /// it exists to give a new player their first currency, not an income.
@@ -92,9 +98,17 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     MempireCards public immutable cards;
     IERC20 public immutable mempire;
-    /// Agora's AUSD — the dollar stake currency.
-    address public immutable ausd;
+    /// USDC — the stake currency (and, natively, Arc's gas token).
+    address public immutable usdc;
 
+    /// Highest stake tier open for new matches. A deployment holding real money
+    /// starts low ($1 and $5 on mainnet) and the owner can only move it within
+    /// the four fixed tiers. Matches already open settle whatever this becomes.
+    uint8 public maxTier;
+    /// Pauses new matches only. Joining an open match, playing, claiming,
+    /// timeouts, cancels and withdrawals are never pausable: no admin switch
+    /// can hold a stake hostage.
+    bool public paused;
     MarketMeta public marketMeta;
     address public treasury;
     uint16 public rakeBps = 1_000; // 10%
@@ -105,9 +119,9 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     uint64 public nextMatchId = 1;
     mapping(uint64 id => Match) internal _matches;
     mapping(address player => uint16) public rewardedWins;
-    /// Payouts a recipient refused (a contract with no receive, a blocked
-    /// token transfer), held for them to pull.
-    mapping(address currency => mapping(address player => uint256)) public owed;
+    /// Payouts a recipient refused (a blocklisted address, a paused token),
+    /// held for them to pull.
+    mapping(address player => uint256) public owed;
 
     // ─────────────────────────────────────────────────────────────── events
 
@@ -149,6 +163,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     event WinRewarded(uint64 indexed matchId, address indexed player, uint256 amount, uint16 rewardedWins);
     event PayoutHeld(address indexed currency, address indexed player, uint256 amount);
     event ConfigChanged();
+    event LimitsChanged(uint8 maxTier, bool paused);
 
     // ─────────────────────────────────────────────────────────────── errors
 
@@ -167,15 +182,24 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     error BadCardIndex();
     error NothingOwed();
     error TransferFailed();
+    error Paused();
+    error TierClosed();
 
-    constructor(address owner_, MempireCards cards_, address ausd_, MarketMeta meta_, address treasury_)
-        Ownable(owner_)
-    {
+    constructor(
+        address owner_,
+        MempireCards cards_,
+        address usdc_,
+        MarketMeta meta_,
+        address treasury_,
+        uint8 maxTier_
+    ) Ownable(owner_) {
+        require(maxTier_ < TIERS, "bad tier");
         cards = cards_;
         mempire = cards_.mempire();
-        ausd = ausd_;
+        usdc = usdc_;
         marketMeta = meta_;
         treasury = treasury_;
+        maxTier = maxTier_;
     }
 
     // ─────────────────────────────────────────────────────────────── admin
@@ -190,6 +214,14 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         emit ConfigChanged();
     }
 
+    /// Open or close stake tiers for new matches, and pause new matches.
+    function setLimits(uint8 maxTier_, bool paused_) external onlyOwner {
+        require(maxTier_ < TIERS, "bad tier");
+        maxTier = maxTier_;
+        paused = paused_;
+        emit LimitsChanged(maxTier_, paused_);
+    }
+
     function setRules(uint16 rake, uint16 tieRake, uint32 band, uint32 timeout) external onlyOwner {
         require(rake <= 2_000 && tieRake <= 2_000 && timeout >= 4 minutes, "bad rules");
         rakeBps = rake;
@@ -201,35 +233,30 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     // ─────────────────────────────────────────────────────────────── stakes
 
-    /// Four fixed tiers per currency. A tier is a fact the chain enforces, not a
+    /// Four fixed tiers in USDC. A tier is a fact the chain enforces, not a
     /// label the client chooses: Pauper, Knight, Duke, Emperor.
-    function stakeFor(address currency, uint8 tier) public view returns (uint128) {
-        if (tier > 3) return 0;
-        if (currency == address(0)) {
-            return [uint128(0.01 ether), 0.05 ether, 0.25 ether, 1 ether][tier];
-        }
-        if (currency == ausd) {
-            return [uint128(1e6), 5e6, 25e6, 100e6][tier]; // AUSD has 6 decimals
-        }
-        return 0;
+    function stakeFor(uint8 tier) public pure returns (uint128) {
+        if (tier >= TIERS) return 0;
+        return [uint128(1e6), 5e6, 25e6, 100e6][tier]; // USDC's ERC-20 interface has 6 decimals
     }
 
     // ─────────────────────────────────────────────────────────────── lifecycle
 
     /// Open a match: escrow the stake, lock the deck, arm the session key.
-    /// For MON, msg.value is the stake plus any gas to forward to the session
-    /// key. For AUSD, msg.value is only that gas, and the stake is pulled with
-    /// an allowance or a permit signed in the same breath.
-    function createMatch(
-        uint8 tier,
-        address currency,
-        uint256[] calldata cardIds,
-        address session,
-        Permit calldata permit
-    ) external payable nonReentrant returns (uint64 id) {
-        uint128 stake = stakeFor(currency, tier);
+    /// The USDC stake is pulled with an allowance or a permit signed in the
+    /// same breath; msg.value (native USDC) is only the gas to forward to the
+    /// session key.
+    function createMatch(uint8 tier, uint256[] calldata cardIds, address session, Permit calldata permit)
+        external
+        payable
+        nonReentrant
+        returns (uint64 id)
+    {
+        if (paused) revert Paused();
+        uint128 stake = stakeFor(tier);
         if (stake == 0) revert BadStake();
-        uint256 sessionGas = _collectStake(currency, stake, permit);
+        if (tier > maxTier) revert TierClosed();
+        uint256 sessionGas = _collectStake(stake, permit);
 
         id = nextMatchId++;
         (uint32 power, bytes32 deckHash) = cards.lockDeck(msg.sender, cardIds, id);
@@ -244,12 +271,12 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         m.claim1 = NONE;
         m.s0 = session;
         m.power0 = power;
-        m.currency = currency;
+        m.currency = usdc;
         m.stake = stake;
         m.deck0 = deckHash;
 
         _fundSession(session, sessionGas);
-        emit MatchCreated(id, msg.sender, tier, currency, stake, power, deckHash, cardIds, session);
+        emit MatchCreated(id, msg.sender, tier, usdc, stake, power, deckHash, cardIds, session);
     }
 
     /// Take the second seat. The stake must match the one already escrowed and
@@ -264,7 +291,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         if (msg.sender == m.p0 || session == m.p0 || (session != address(0) && session == m.s0)) {
             revert SelfMatch();
         }
-        uint256 sessionGas = _collectStake(m.currency, m.stake, permit);
+        uint256 sessionGas = _collectStake(m.stake, permit);
 
         (uint32 power, bytes32 deckHash) = cards.lockDeck(msg.sender, cardIds, id);
         uint32 diff = power > m.power0 ? power - m.power0 : m.power0 - power;
@@ -295,8 +322,8 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     // ─────────────────────────────────────────────────────────────── the play log
 
-    /// One card drop. Sent by the seat's session key at 400 ms blocks, so the
-    /// log fills in while the match is played. Ticks are monotonic per seat.
+    /// One card drop. Sent by the seat's session key and final in under a
+    /// second on Arc, so the log fills in while the match is played. Ticks are monotonic per seat.
     function play(uint64 id, uint32 tick, uint8 cardIndex, int16 x, int16 y) external {
         Match storage m = _matches[id];
         uint8 seat = _activeSeat(m);
@@ -373,16 +400,11 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     }
 
     /// Pull a payout that could not be pushed.
-    function withdraw(address currency) external nonReentrant {
-        uint256 amount = owed[currency][msg.sender];
+    function withdraw() external nonReentrant {
+        uint256 amount = owed[msg.sender];
         if (amount == 0) revert NothingOwed();
-        owed[currency][msg.sender] = 0;
-        if (currency == address(0)) {
-            (bool ok,) = msg.sender.call{value: amount}("");
-            if (!ok) revert TransferFailed();
-        } else {
-            IERC20(currency).safeTransfer(msg.sender, amount);
-        }
+        owed[msg.sender] = 0;
+        IERC20(usdc).safeTransfer(msg.sender, amount);
     }
 
     function _settle(uint64 id, Match storage m, uint8 winner, bool byTimeout) internal {
@@ -435,25 +457,17 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     // ─────────────────────────────────────────────────────────────── internals
 
-    function _collectStake(address currency, uint128 stake, Permit calldata permit)
-        internal
-        returns (uint256 sessionGas)
-    {
-        if (currency == address(0)) {
-            if (msg.value < stake) revert BadStake();
-            sessionGas = msg.value - stake;
-        } else {
-            sessionGas = msg.value;
-            if (permit.deadline != 0) {
-                // A permit that was front-run has already set the allowance it
-                // was going to set; the transfer below is what must succeed.
-                try IERC20Permit(currency).permit(
-                    msg.sender, address(this), stake, permit.deadline, permit.v, permit.r, permit.s
-                ) {} catch {}
-            }
-            IERC20(currency).safeTransferFrom(msg.sender, address(this), stake);
-        }
+    function _collectStake(uint128 stake, Permit calldata permit) internal returns (uint256 sessionGas) {
+        sessionGas = msg.value;
         if (sessionGas > MAX_SESSION_GAS) revert BadSessionGas();
+        if (permit.deadline != 0) {
+            // A permit that was front-run has already set the allowance it
+            // was going to set; the transfer below is what must succeed.
+            try IERC20Permit(usdc).permit(
+                msg.sender, address(this), stake, permit.deadline, permit.v, permit.r, permit.s
+            ) {} catch {}
+        }
+        IERC20(usdc).safeTransferFrom(msg.sender, address(this), stake);
     }
 
     function _fundSession(address session, uint256 amount) internal {
@@ -463,19 +477,15 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         if (!ok) revert TransferFailed();
     }
 
-    /// Push a payout; if the recipient refuses it, hold it for them to pull.
+    /// Push a payout; if USDC refuses it (a blocklisted recipient, a paused
+    /// token), hold it for them to pull, so one refused leg never blocks the
+    /// other seat's payout.
     function _pay(address currency, address to, uint256 amount) internal {
         if (amount == 0) return;
-        bool ok;
-        if (currency == address(0)) {
-            (ok,) = to.call{value: amount, gas: 50_000}("");
-        } else {
-            (bool sent, bytes memory ret) =
-                currency.call(abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
-            ok = sent && (ret.length == 0 || abi.decode(ret, (bool)));
-        }
+        (bool sent, bytes memory ret) = currency.call(abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
+        bool ok = sent && (ret.length == 0 || abi.decode(ret, (bool)));
         if (!ok) {
-            owed[currency][to] += amount;
+            owed[to] += amount;
             emit PayoutHeld(currency, to, amount);
         }
     }

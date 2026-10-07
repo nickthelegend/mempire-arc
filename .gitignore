@@ -17,8 +17,9 @@ cre/**/node_modules/
 cre/**/.env
 .vercel
 .local/
-# the throwaway test fork (server/test-chain.mjs)
-shared/deployments/31338.json
-server/shared/deployments/31338.json
-app/src/shared/deployments/31338.json
-contracts/broadcast/*/31338/
+# local Arc forks: the dev fork (31337, scripts/local-up.sh) and the throwaway test fork (31338)
+shared/deployments/3133[78].json
+server/shared/deployments/3133[78].json
+app/src/shared/deployments/3133[78].json
+contracts/broadcast/*/3133[78]/
+deployments/*.pending

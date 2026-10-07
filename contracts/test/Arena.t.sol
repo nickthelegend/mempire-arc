@@ -4,21 +4,18 @@ pragma solidity ^0.8.28;
 import {Base} from "./Base.t.sol";
 import {MempireArena} from "../src/MempireArena.sol";
 import {MempireCards} from "../src/MempireCards.sol";
-
-contract RefusesMon {
-    receive() external payable {
-        revert("no");
-    }
-}
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {CircleUSDC} from "./utils/CircleUSDC.sol";
 
 contract ArenaTest is Base {
-    uint128 internal constant KNIGHT = 0.05 ether;
+    uint128 internal constant KNIGHT = 5e6; // 5 USDC
 
     function test_create_escrowsStake_locksDeck_fundsSession() public {
         uint256[] memory deck = giveStarter(alice);
         uint256 sBefore = aliceSession.balance;
+        uint256 uBefore = usdc.balanceOf(alice);
         vm.prank(alice);
-        uint64 id = arena.createMatch{value: KNIGHT + 0.03 ether}(1, address(0), deck, aliceSession, noPermit());
+        uint64 id = arena.createMatch{value: 0.03 ether}(1, deck, aliceSession, noPermit());
 
         MempireArena.Match memory m = arena.getMatch(id);
         assertEq(m.p0, alice);
@@ -26,7 +23,10 @@ contract ArenaTest is Base {
         assertEq(m.stake, KNIGHT);
         assertEq(m.power0, 8);
         assertEq(m.deck0, keccak256(abi.encode(deck)));
-        assertEq(address(arena).balance, KNIGHT);
+        assertEq(m.currency, address(usdc));
+        assertEq(usdc.balanceOf(address(arena)), KNIGHT);
+        assertEq(uBefore - usdc.balanceOf(alice), KNIGHT);
+        assertEq(address(arena).balance, 0); // session gas is forwarded, never held
         assertEq(aliceSession.balance - sBefore, 0.03 ether);
         assertTrue(cards.isLocked(deck[0]));
 
@@ -39,14 +39,21 @@ contract ArenaTest is Base {
         uint256[] memory deck = giveStarter(alice);
         vm.startPrank(alice);
         vm.expectRevert(MempireArena.BadStake.selector);
-        arena.createMatch{value: KNIGHT - 1}(1, address(0), deck, aliceSession, noPermit());
-        vm.expectRevert(MempireArena.BadStake.selector);
-        arena.createMatch{value: 1 ether}(4, address(0), deck, aliceSession, noPermit());
+        arena.createMatch(4, deck, aliceSession, noPermit());
         vm.expectRevert(MempireArena.BadSessionGas.selector);
-        arena.createMatch{value: KNIGHT + 1 ether}(1, address(0), deck, aliceSession, noPermit());
+        arena.createMatch{value: 0.25 ether + 1}(1, deck, aliceSession, noPermit());
         vm.expectRevert(MempireArena.BadSessionGas.selector);
-        arena.createMatch{value: KNIGHT + 1}(1, address(0), deck, address(0), noPermit());
+        arena.createMatch{value: 1}(1, deck, address(0), noPermit());
         vm.stopPrank();
+
+        // No allowance and no permit: the USDC pull fails and nothing is locked.
+        address carol = makeAddr("carol");
+        CircleUSDC.mint(carol, 100e6);
+        uint256[] memory cDeck = giveStarter(carol);
+        vm.prank(carol);
+        vm.expectRevert();
+        arena.createMatch(0, cDeck, address(0), noPermit());
+        assertFalse(cards.isLocked(cDeck[0]));
     }
 
     function test_create_rejectsForeignOrLockedOrDuplicateDeck() public {
@@ -54,26 +61,23 @@ contract ArenaTest is Base {
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
         vm.expectRevert(MempireCards.NotOwner.selector);
-        arena.createMatch{value: KNIGHT}(1, address(0), bDeck, aliceSession, noPermit());
+        arena.createMatch(1, bDeck, aliceSession, noPermit());
 
         vm.prank(alice);
-        arena.createMatch{value: KNIGHT}(1, address(0), aDeck, aliceSession, noPermit());
+        arena.createMatch(1, aDeck, aliceSession, noPermit());
         vm.prank(alice);
         vm.expectRevert(MempireCards.CardLocked.selector);
-        arena.createMatch{value: KNIGHT}(1, address(0), aDeck, aliceSession, noPermit());
+        arena.createMatch(1, aDeck, aliceSession, noPermit());
 
-        vm.prank(alice);
-        uint256 extra = cards.mint{value: MINT_FEE + 1}(0, update(0, 1)); // same coin as aDeck[0]
         uint256[] memory dup = new uint256[](8);
-        dup[0] = extra;
-        vm.startPrank(alice);
+        dup[0] = mintAs(alice, 0); // same coin as aDeck[0]
         for (uint16 i = 1; i < 8; ++i) {
-            dup[i] = cards.mint{value: MINT_FEE + 1}(i, update(i, 1));
+            dup[i] = mintAs(alice, i);
         }
-        dup[7] = cards.mint{value: MINT_FEE + 1}(0, update(0, 1));
+        dup[7] = mintAs(alice, 0);
+        vm.prank(alice);
         vm.expectRevert(MempireCards.DuplicateCoin.selector);
-        arena.createMatch{value: KNIGHT}(1, address(0), dup, aliceSession, noPermit());
-        vm.stopPrank();
+        arena.createMatch(1, dup, aliceSession, noPermit());
     }
 
     function test_join_activates_snapshotsMetaEpoch_rejectsSelf() public {
@@ -83,17 +87,17 @@ contract ArenaTest is Base {
         uint256[] memory aDeck = giveStarter(alice);
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
-        uint64 id = arena.createMatch{value: KNIGHT}(1, address(0), aDeck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, aDeck, aliceSession, noPermit());
 
         vm.prank(alice);
         vm.expectRevert(MempireArena.SelfMatch.selector);
-        arena.joinMatch{value: KNIGHT}(id, aDeck, aliceSession, noPermit());
+        arena.joinMatch(id, aDeck, aliceSession, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.SelfMatch.selector);
-        arena.joinMatch{value: KNIGHT}(id, bDeck, aliceSession, noPermit());
+        arena.joinMatch(id, bDeck, aliceSession, noPermit());
 
         vm.prank(bob);
-        arena.joinMatch{value: KNIGHT}(id, bDeck, bobSession, noPermit());
+        arena.joinMatch(id, bDeck, bobSession, noPermit());
         MempireArena.Match memory m = arena.getMatch(id);
         assertEq(m.state, arena.STATE_ACTIVE());
         assertEq(m.metaEpoch, 7);
@@ -105,41 +109,44 @@ contract ArenaTest is Base {
         uint256[] memory aDeck = giveStarter(alice);
         // Bob's deck: eight level-3 cards (power 24) vs Alice's 8.
         uint256[] memory bDeck = new uint256[](8);
-        vm.startPrank(bob);
+        vm.prank(bob);
         token.approve(address(cards), type(uint256).max);
         for (uint16 i; i < 8; ++i) {
-            uint256 keep = cards.mint{value: MINT_FEE + 1}(i, update(i, 1));
-            cards.merge(keep, cards.mint{value: MINT_FEE + 1}(i, update(i, 1)));
-            cards.merge(keep, cards.mint{value: MINT_FEE + 1}(i, update(i, 1)));
+            uint256 keep = mintAs(bob, i);
+            uint256 d1 = mintAs(bob, i);
+            uint256 d2 = mintAs(bob, i);
+            vm.startPrank(bob);
+            cards.merge(keep, d1);
+            cards.merge(keep, d2);
+            vm.stopPrank();
             bDeck[i] = keep;
         }
-        vm.stopPrank();
         vm.prank(alice);
-        uint64 id = arena.createMatch{value: KNIGHT}(1, address(0), aDeck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, aDeck, aliceSession, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.PowerMismatch.selector);
-        arena.joinMatch{value: KNIGHT}(id, bDeck, bobSession, noPermit());
+        arena.joinMatch(id, bDeck, bobSession, noPermit());
     }
 
     function test_cancel_refundsAndUnlocks() public {
         uint256[] memory deck = giveStarter(alice);
         vm.prank(alice);
-        uint64 id = arena.createMatch{value: KNIGHT}(1, address(0), deck, aliceSession, noPermit());
+        uint64 id = arena.createMatch(1, deck, aliceSession, noPermit());
         vm.prank(bob);
         vm.expectRevert(MempireArena.NotASeat.selector);
         arena.cancelMatch(id);
 
-        uint256 before = alice.balance;
+        uint256 before = usdc.balanceOf(alice);
         vm.prank(alice);
         arena.cancelMatch(id);
-        assertEq(alice.balance - before, KNIGHT);
+        assertEq(usdc.balanceOf(alice) - before, KNIGHT);
         assertFalse(cards.isLocked(deck[0]));
         vm.prank(alice);
         cards.transferFrom(alice, bob, deck[0]); // free again
     }
 
     function test_play_bySessionKey_isMonotonic_andSeatGated() public {
-        (uint64 id,,) = startMonMatch(1);
+        (uint64 id,,) = startMatch(1);
         vm.prank(aliceSession);
         arena.play(id, 40, 3, 100, -200);
         vm.prank(bobSession);
@@ -173,9 +180,9 @@ contract ArenaTest is Base {
     }
 
     function test_agreedWin_pays90_rakes10_rewards_andGrantsChest() public {
-        (uint64 id, uint256[] memory aDeck,) = startMonMatch(1);
-        uint256 aBefore = alice.balance;
-        uint256 tBefore = treasury.balance;
+        (uint64 id, uint256[] memory aDeck,) = startMatch(1);
+        uint256 aBefore = usdc.balanceOf(alice);
+        uint256 tBefore = usdc.balanceOf(treasury);
         uint256 tokBefore = token.balanceOf(alice);
 
         vm.prank(aliceSession);
@@ -188,9 +195,9 @@ contract ArenaTest is Base {
         assertEq(m.state, arena.STATE_SETTLED());
         assertEq(m.winner, 0);
         uint256 pot = uint256(KNIGHT) * 2;
-        assertEq(alice.balance - aBefore, pot * 90 / 100);
-        assertEq(treasury.balance - tBefore, pot / 10);
-        assertEq(address(arena).balance, 0);
+        assertEq(usdc.balanceOf(alice) - aBefore, pot * 90 / 100);
+        assertEq(usdc.balanceOf(treasury) - tBefore, pot / 10);
+        assertEq(usdc.balanceOf(address(arena)), 0);
         assertEq(token.balanceOf(alice) - tokBefore, 50 ether);
         assertEq(arena.rewardedWins(alice), 1);
         assertEq(cards.activeChests(alice), 1);
@@ -199,39 +206,39 @@ contract ArenaTest is Base {
     }
 
     function test_tie_splitsAfter5PercentRake() public {
-        (uint64 id,,) = startMonMatch(2);
-        uint128 stake = arena.stakeFor(address(0), 2);
-        uint256 aBefore = alice.balance;
-        uint256 bBefore = bob.balance;
-        uint256 tBefore = treasury.balance;
+        (uint64 id,,) = startMatch(2);
+        uint128 stake = arena.stakeFor(2);
+        uint256 aBefore = usdc.balanceOf(alice);
+        uint256 bBefore = usdc.balanceOf(bob);
+        uint256 tBefore = usdc.balanceOf(treasury);
         vm.prank(aliceSession);
         arena.claim(id, 2, bytes32(0));
         vm.prank(bobSession);
         arena.claim(id, 2, bytes32(0));
         uint256 pot = uint256(stake) * 2;
         uint256 half = (pot - pot * 5 / 100) / 2;
-        assertEq(alice.balance - aBefore, half);
-        assertEq(bob.balance - bBefore, half);
-        assertEq(treasury.balance - tBefore, pot - half * 2);
+        assertEq(usdc.balanceOf(alice) - aBefore, half);
+        assertEq(usdc.balanceOf(bob) - bBefore, half);
+        assertEq(usdc.balanceOf(treasury) - tBefore, pot - half * 2);
         assertEq(cards.activeChests(alice) + cards.activeChests(bob), 0);
     }
 
     function test_disagreement_voids_andRefundsBoth() public {
-        (uint64 id,,) = startMonMatch(1);
-        uint256 aBefore = alice.balance;
-        uint256 bBefore = bob.balance;
+        (uint64 id,,) = startMatch(1);
+        uint256 aBefore = usdc.balanceOf(alice);
+        uint256 bBefore = usdc.balanceOf(bob);
         vm.prank(aliceSession);
         arena.claim(id, 0, bytes32(0));
         vm.prank(bobSession);
         arena.claim(id, 1, bytes32(0));
-        assertEq(alice.balance - aBefore, KNIGHT);
-        assertEq(bob.balance - bBefore, KNIGHT);
+        assertEq(usdc.balanceOf(alice) - aBefore, KNIGHT);
+        assertEq(usdc.balanceOf(bob) - bBefore, KNIGHT);
         assertEq(arena.getMatch(id).winner, arena.NONE());
         assertEq(arena.rewardedWins(alice) + arena.rewardedWins(bob), 0);
     }
 
     function test_doubleClaim_reverts() public {
-        (uint64 id,,) = startMonMatch(1);
+        (uint64 id,,) = startMatch(1);
         vm.prank(aliceSession);
         arena.claim(id, 0, bytes32(0));
         vm.prank(alice);
@@ -240,7 +247,7 @@ contract ArenaTest is Base {
     }
 
     function test_timeout_singleClaimStands_noRewardNoChest() public {
-        (uint64 id,,) = startMonMatch(1);
+        (uint64 id,,) = startMatch(1);
         vm.prank(bobSession);
         arena.claim(id, 1, bytes32(0));
 
@@ -248,38 +255,38 @@ contract ArenaTest is Base {
         arena.claimTimeout(id);
 
         vm.warp(block.timestamp + arena.matchTimeout());
-        uint256 bBefore = bob.balance;
+        uint256 bBefore = usdc.balanceOf(bob);
         vm.prank(makeAddr("anyone"));
         arena.claimTimeout(id);
-        assertEq(bob.balance - bBefore, uint256(KNIGHT) * 2 * 90 / 100);
+        assertEq(usdc.balanceOf(bob) - bBefore, uint256(KNIGHT) * 2 * 90 / 100);
         assertEq(arena.rewardedWins(bob), 0);
         assertEq(cards.activeChests(bob), 0);
     }
 
     function test_timeout_honestLoserClaimStands() public {
-        (uint64 id,,) = startMonMatch(1);
+        (uint64 id,,) = startMatch(1);
         // Bob lost and said so; Alice never claimed. Alice is paid.
         vm.prank(bobSession);
         arena.claim(id, 0, bytes32(0));
         vm.warp(block.timestamp + arena.matchTimeout());
-        uint256 aBefore = alice.balance;
+        uint256 aBefore = usdc.balanceOf(alice);
         arena.claimTimeout(id);
-        assertEq(alice.balance - aBefore, uint256(KNIGHT) * 2 * 90 / 100);
+        assertEq(usdc.balanceOf(alice) - aBefore, uint256(KNIGHT) * 2 * 90 / 100);
     }
 
     function test_timeout_noClaims_refundsBoth() public {
-        (uint64 id, uint256[] memory aDeck,) = startMonMatch(1);
+        (uint64 id, uint256[] memory aDeck,) = startMatch(1);
         vm.warp(block.timestamp + arena.matchTimeout());
-        uint256 aBefore = alice.balance;
-        uint256 bBefore = bob.balance;
+        uint256 aBefore = usdc.balanceOf(alice);
+        uint256 bBefore = usdc.balanceOf(bob);
         arena.claimTimeout(id);
-        assertEq(alice.balance - aBefore, KNIGHT);
-        assertEq(bob.balance - bBefore, KNIGHT);
+        assertEq(usdc.balanceOf(alice) - aBefore, KNIGHT);
+        assertEq(usdc.balanceOf(bob) - bBefore, KNIGHT);
         assertFalse(cards.isLocked(aDeck[0]));
     }
 
     function test_lateClaimOrPlay_reverts() public {
-        (uint64 id,,) = startMonMatch(1);
+        (uint64 id,,) = startMatch(1);
         vm.warp(block.timestamp + arena.matchTimeout() + 1);
         vm.prank(aliceSession);
         vm.expectRevert(MempireArena.TooLate.selector);
@@ -295,9 +302,9 @@ contract ArenaTest is Base {
         uint256[] memory bDeck = giveStarter(bob);
         for (uint256 i; i < 17; ++i) {
             vm.prank(p[0]);
-            uint64 id = arena.createMatch{value: 0.01 ether}(0, address(0), aDeck, address(0), noPermit());
+            uint64 id = arena.createMatch(0, aDeck, address(0), noPermit());
             vm.prank(p[1]);
-            arena.joinMatch{value: 0.01 ether}(id, bDeck, address(0), noPermit());
+            arena.joinMatch(id, bDeck, address(0), noPermit());
             vm.prank(alice);
             arena.claim(id, 0, bytes32(i));
             vm.prank(bob);
@@ -307,42 +314,60 @@ contract ArenaTest is Base {
     }
 
     function test_emptyRewardPool_stillPaysPot() public {
-        MempireArena bare = new MempireArena(admin, cards, address(ausd), meta, treasury);
+        MempireArena bare = new MempireArena(admin, cards, address(usdc), meta, treasury, 3);
         vm.prank(admin);
         cards.setArena(address(bare));
         uint256[] memory aDeck = giveStarter(alice);
         uint256[] memory bDeck = giveStarter(bob);
         vm.prank(alice);
-        uint64 id = bare.createMatch{value: 0.01 ether}(0, address(0), aDeck, address(0), noPermit());
+        usdc.approve(address(bare), type(uint256).max);
         vm.prank(bob);
-        bare.joinMatch{value: 0.01 ether}(id, bDeck, address(0), noPermit());
-        uint256 before = alice.balance;
+        usdc.approve(address(bare), type(uint256).max);
+        vm.prank(alice);
+        uint64 id = bare.createMatch(0, aDeck, address(0), noPermit());
+        vm.prank(bob);
+        bare.joinMatch(id, bDeck, address(0), noPermit());
+        uint256 before = usdc.balanceOf(alice);
         vm.prank(alice);
         bare.claim(id, 0, bytes32(0));
         vm.prank(bob);
         bare.claim(id, 0, bytes32(0));
-        assertEq(alice.balance - before, 0.018 ether);
+        assertEq(usdc.balanceOf(alice) - before, 1.8e6);
         assertEq(bare.rewardedWins(alice), 0);
     }
 
-    function test_refusedPayout_isHeldThenWithdrawn() public {
-        RefusesMon wall = new RefusesMon();
-        uint256[] memory aDeck = giveStarter(address(wall));
-        uint256[] memory bDeck = giveStarter(bob);
-        vm.deal(address(wall), 1 ether);
-        vm.prank(address(wall));
-        uint64 id = arena.createMatch{value: 0.01 ether}(0, address(0), aDeck, address(0), noPermit());
-        vm.prank(bob);
-        arena.joinMatch{value: 0.01 ether}(id, bDeck, address(0), noPermit());
-        vm.prank(address(wall));
+    /// Arc enforces Circle's blocklist on USDC. A winner who is blocklisted
+    /// when the pot pays can't receive it — and must not be able to brick the
+    /// settlement either: their leg is held, the treasury's rake still lands,
+    /// and they pull it if and when they are unblocked.
+    function test_blocklistedWinner_isHeldThenWithdrawn() public {
+        (uint64 id,,) = startMatch(0);
+        vm.prank(aliceSession);
         arena.claim(id, 0, bytes32(0));
-        vm.prank(bob);
-        arena.claim(id, 0, bytes32(0)); // must not revert though the winner refuses MON
-        assertEq(arena.owed(address(0), address(wall)), 0.018 ether);
+        CircleUSDC.blacklist(alice);
+        uint256 tBefore = usdc.balanceOf(treasury);
+        vm.prank(bobSession);
+        arena.claim(id, 0, bytes32(0)); // must not revert though the winner can't receive USDC
         assertEq(arena.getMatch(id).state, arena.STATE_SETTLED());
+        assertEq(arena.owed(alice), 1.8e6);
+        assertEq(usdc.balanceOf(treasury) - tBefore, 0.2e6);
+        assertEq(usdc.balanceOf(address(arena)), 1.8e6);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        arena.withdraw(); // still blocklisted: the token refuses
+        CircleUSDC.unBlacklist(alice);
+        uint256 aBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        arena.withdraw();
+        assertEq(usdc.balanceOf(alice) - aBefore, 1.8e6);
+        assertEq(arena.owed(alice), 0);
+        vm.prank(alice);
+        vm.expectRevert(MempireArena.NothingOwed.selector);
+        arena.withdraw();
     }
 
-    // ── AUSD ────────────────────────────────────────────────────────────────
+    // ── permits (Arc's USDC: EIP-712 domain "USDC" / "2") ─────────────────────
 
     function _permit(uint256 key, address owner, uint256 value) internal view returns (MempireArena.Permit memory p) {
         uint256 deadline = block.timestamp + 1 hours;
@@ -352,62 +377,141 @@ contract ArenaTest is Base {
                 owner,
                 address(arena),
                 value,
-                ausd.nonces(owner),
+                usdc.nonces(owner),
                 deadline
             )
         );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ausd.DOMAIN_SEPARATOR(), structHash));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
         p = MempireArena.Permit({deadline: deadline, v: v, r: r, s: s});
     }
 
-    function test_ausdMatch_withPermit_paysInDollars() public {
-        uint256[] memory aDeck = giveStarter(alice);
-        uint256[] memory bDeck = giveStarter(bob);
-        uint128 stake = arena.stakeFor(address(ausd), 1); // 5 AUSD
+    function test_usdcDomain_isArcs() public view {
+        bytes32 expected = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("USDC"),
+                keccak256("2"),
+                block.chainid,
+                address(usdc)
+            )
+        );
+        assertEq(usdc.DOMAIN_SEPARATOR(), expected);
+        assertEq(usdc.decimals(), 6);
+    }
 
-        MempireArena.Permit memory pa = _permit(aliceKey, alice, stake);
-        vm.prank(alice);
-        uint64 id = arena.createMatch{value: 0.02 ether}(1, address(ausd), aDeck, aliceSession, pa);
-        assertEq(ausd.balanceOf(address(arena)), stake);
+    function test_permitMatch_oneTxEach_paysInDollars() public {
+        (address carol, uint256 carolKey) = makeAddrAndKey("carol");
+        (address dave, uint256 daveKey) = makeAddrAndKey("dave");
+        CircleUSDC.mint(carol, 10e6);
+        CircleUSDC.mint(dave, 10e6);
+        vm.deal(carol, 1 ether);
+        uint256[] memory cDeck = giveStarter(carol);
+        uint256[] memory dDeck = giveStarter(dave);
+        uint128 stake = arena.stakeFor(1); // 5 USDC
+
+        MempireArena.Permit memory pc = _permit(carolKey, carol, stake);
+        vm.prank(carol);
+        uint64 id = arena.createMatch{value: 0.02 ether}(1, cDeck, aliceSession, pc);
+        assertEq(usdc.balanceOf(address(arena)), stake);
         assertEq(aliceSession.balance, 0.02 ether);
 
-        MempireArena.Permit memory pb = _permit(bobKey, bob, stake);
-        vm.prank(bob);
-        arena.joinMatch(id, bDeck, bobSession, pb);
+        MempireArena.Permit memory pd = _permit(daveKey, dave, stake);
+        vm.prank(dave);
+        arena.joinMatch(id, dDeck, bobSession, pd);
 
-        uint256 bBefore = ausd.balanceOf(bob);
+        uint256 tBefore = usdc.balanceOf(treasury);
         vm.prank(aliceSession);
         arena.claim(id, 1, bytes32(0));
         vm.prank(bobSession);
         arena.claim(id, 1, bytes32(0));
-        assertEq(ausd.balanceOf(bob) - bBefore, 9e6);
-        assertEq(ausd.balanceOf(treasury), 1e6);
-        assertEq(ausd.balanceOf(address(arena)), 0);
+        assertEq(usdc.balanceOf(dave), 5e6 + 9e6);
+        assertEq(usdc.balanceOf(carol), 5e6);
+        assertEq(usdc.balanceOf(treasury) - tBefore, 1e6);
+        assertEq(usdc.balanceOf(address(arena)), 0);
     }
 
-    function test_ausdMatch_frontRunPermitStillWorks() public {
-        uint256[] memory aDeck = giveStarter(alice);
-        uint128 stake = arena.stakeFor(address(ausd), 0);
-        MempireArena.Permit memory pa = _permit(aliceKey, alice, stake);
-        // Someone submits Alice's permit first; her create must still succeed.
-        ausd.permit(alice, address(arena), stake, pa.deadline, pa.v, pa.r, pa.s);
-        vm.prank(alice);
-        arena.createMatch(0, address(ausd), aDeck, address(0), pa);
-        assertEq(ausd.balanceOf(address(arena)), stake);
+    function test_frontRunPermitStillWorks() public {
+        (address carol, uint256 carolKey) = makeAddrAndKey("carol");
+        CircleUSDC.mint(carol, 10e6);
+        uint256[] memory cDeck = giveStarter(carol);
+        uint128 stake = arena.stakeFor(0);
+        MempireArena.Permit memory pc = _permit(carolKey, carol, stake);
+        // Someone submits Carol's permit first; her create must still succeed.
+        usdc.permit(carol, address(arena), stake, pc.deadline, pc.v, pc.r, pc.s);
+        vm.prank(carol);
+        arena.createMatch(0, cDeck, address(0), pc);
+        assertEq(usdc.balanceOf(address(arena)), stake);
     }
 
-    function test_unknownCurrency_rejected() public {
-        uint256[] memory aDeck = giveStarter(alice);
+    // ── limits for a deployment that holds real money ─────────────────────────
+
+    function test_stakeTiers_areDollars() public view {
+        assertEq(arena.stakeFor(0), 1e6);
+        assertEq(arena.stakeFor(1), 5e6);
+        assertEq(arena.stakeFor(2), 25e6);
+        assertEq(arena.stakeFor(3), 100e6);
+        assertEq(arena.stakeFor(4), 0);
+    }
+
+    function test_maxTier_capsNewMatches() public {
+        uint256[] memory deck = giveStarter(alice);
+        vm.prank(admin);
+        arena.setLimits(1, false); // mainnet launch: $1 and $5 only
         vm.prank(alice);
-        vm.expectRevert(MempireArena.BadStake.selector);
-        arena.createMatch(0, address(token), aDeck, address(0), noPermit());
+        vm.expectRevert(MempireArena.TierClosed.selector);
+        arena.createMatch(2, deck, address(0), noPermit());
+        vm.prank(alice);
+        arena.createMatch(1, deck, address(0), noPermit());
+
+        vm.expectRevert(bytes("bad tier"));
+        new MempireArena(admin, cards, address(usdc), meta, treasury, 4);
+        vm.prank(admin);
+        vm.expectRevert(bytes("bad tier"));
+        arena.setLimits(4, false);
+    }
+
+    function test_pause_blocksNewMatchesOnly() public {
+        uint256[] memory aDeck = giveStarter(alice);
+        uint256[] memory bDeck = giveStarter(bob);
+        vm.prank(alice);
+        uint64 id = arena.createMatch(0, aDeck, aliceSession, noPermit());
+        vm.prank(admin);
+        arena.setLimits(3, true);
+
+        vm.prank(carolAddr());
+        vm.expectRevert(MempireArena.Paused.selector);
+        arena.createMatch(0, new uint256[](8), address(0), noPermit());
+
+        // An open match can still be joined, played and settled while paused.
+        vm.prank(bob);
+        arena.joinMatch(id, bDeck, bobSession, noPermit());
+        vm.prank(aliceSession);
+        arena.play(id, 10, 0, 0, 0);
+        vm.prank(aliceSession);
+        arena.claim(id, 0, bytes32(0));
+        vm.prank(bobSession);
+        arena.claim(id, 0, bytes32(0));
+        assertEq(arena.getMatch(id).state, arena.STATE_SETTLED());
+    }
+
+    function test_limitsAndRules_ownerOnly() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        arena.setLimits(3, true);
+        vm.prank(admin);
+        vm.expectRevert(bytes("bad rules"));
+        arena.setRules(2_001, 500, 12, 8 minutes);
+    }
+
+    function carolAddr() internal returns (address) {
+        return makeAddr("carol");
     }
 
     function test_mergeBlockedWhileLocked_freedAfterSettle() public {
-        (uint64 id, uint256[] memory aDeck,) = startMonMatch(1);
+        (uint64 id, uint256[] memory aDeck,) = startMatch(1);
+        uint256 dupe = mintAs(alice, 0);
         vm.startPrank(alice);
-        uint256 dupe = cards.mint{value: MINT_FEE + 1}(0, update(0, 1));
         token.approve(address(cards), type(uint256).max);
         vm.expectRevert(MempireCards.CardLocked.selector);
         cards.merge(aDeck[0], dupe);
@@ -425,13 +529,14 @@ contract ArenaTest is Base {
         tier = uint8(bound(tier, 0, 3));
         a = uint8(bound(a, 0, 2));
         b = uint8(bound(b, 0, 2));
-        (uint64 id,,) = startMonMatch(tier);
-        uint256 total = alice.balance + bob.balance + treasury.balance + address(arena).balance;
+        (uint64 id,,) = startMatch(tier);
+        uint256 total = usdc.balanceOf(alice) + usdc.balanceOf(bob) + usdc.balanceOf(treasury)
+            + usdc.balanceOf(address(arena));
         vm.prank(aliceSession);
         arena.claim(id, a, bytes32(0));
         vm.prank(bobSession);
         arena.claim(id, b, bytes32(0));
-        assertEq(address(arena).balance, 0);
-        assertEq(alice.balance + bob.balance + treasury.balance, total);
+        assertEq(usdc.balanceOf(address(arena)), 0);
+        assertEq(usdc.balanceOf(alice) + usdc.balanceOf(bob) + usdc.balanceOf(treasury), total);
     }
 }
