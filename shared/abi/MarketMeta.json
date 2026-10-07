@@ -30,6 +30,45 @@
   },
   {
     "type": "function",
+    "name": "GAIN_DEN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GAIN_NUM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "LOOKBACK",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_BPS",
     "inputs": [],
     "outputs": [
@@ -37,19 +76,6 @@
         "name": "",
         "type": "int16",
         "internalType": "int16"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "MOMENTUM_GAIN",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "int256",
-        "internalType": "int256"
       }
     ],
     "stateMutability": "view"
@@ -69,7 +95,7 @@
   },
   {
     "type": "function",
-    "name": "SOURCE_ORACLE",
+    "name": "SOURCE_FEEDS",
     "inputs": [],
     "outputs": [
       {
@@ -166,6 +192,30 @@
   },
   {
     "type": "function",
+    "name": "feedMomentumBps",
+    "inputs": [
+      {
+        "name": "coinId",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dayAgoRound",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int16",
+        "internalType": "int16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "forwarder",
     "inputs": [],
     "outputs": [
@@ -230,14 +280,14 @@
     "name": "momentumBps",
     "inputs": [
       {
-        "name": "spot",
-        "type": "int64",
-        "internalType": "int64"
+        "name": "now_",
+        "type": "int256",
+        "internalType": "int256"
       },
       {
-        "name": "ema",
-        "type": "int64",
-        "internalType": "int64"
+        "name": "then_",
+        "type": "int256",
+        "internalType": "int256"
       }
     ],
     "outputs": [
@@ -269,19 +319,6 @@
   },
   {
     "type": "function",
-    "name": "oracle",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IPyth"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -308,7 +345,7 @@
   },
   {
     "type": "function",
-    "name": "postFromOracle",
+    "name": "postFromFeeds",
     "inputs": [
       {
         "name": "coinIds",
@@ -316,9 +353,9 @@
         "internalType": "uint16[]"
       },
       {
-        "name": "priceUpdate",
-        "type": "bytes[]",
-        "internalType": "bytes[]"
+        "name": "dayAgoRounds",
+        "type": "uint80[]",
+        "internalType": "uint80[]"
       }
     ],
     "outputs": [
@@ -333,12 +370,25 @@
         "internalType": "int16[]"
       }
     ],
-    "stateMutability": "payable"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setCards",
+    "inputs": [
+      {
+        "name": "cards_",
+        "type": "address",
+        "internalType": "contract MempireCards"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -363,24 +413,6 @@
         "name": "forwarder_",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setOracle",
-    "inputs": [
-      {
-        "name": "oracle_",
-        "type": "address",
-        "internalType": "contract IPyth"
-      },
-      {
-        "name": "cards_",
-        "type": "address",
-        "internalType": "contract MempireCards"
       }
     ],
     "outputs": [],
@@ -417,6 +449,19 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "CardsChanged",
+    "inputs": [
+      {
+        "name": "cards",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",
@@ -483,25 +528,6 @@
   },
   {
     "type": "event",
-    "name": "OracleChanged",
-    "inputs": [
-      {
-        "name": "oracle",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "cards",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "OwnershipTransferStarted",
     "inputs": [
       {
@@ -553,7 +579,23 @@
   },
   {
     "type": "error",
-    "name": "BadMomentum",
+    "name": "BadPrice",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadRoundHint",
+    "inputs": [
+      {
+        "name": "coinId",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "CardsNotSet",
     "inputs": []
   },
   {
@@ -564,11 +606,6 @@
   {
     "type": "error",
     "name": "NotForwarder",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "OracleNotSet",
     "inputs": []
   },
   {
@@ -600,17 +637,12 @@
   },
   {
     "type": "error",
-    "name": "RefundFailed",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "StaleEpoch",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "WrongPayment",
+    "name": "StalePrice",
     "inputs": []
   },
   {

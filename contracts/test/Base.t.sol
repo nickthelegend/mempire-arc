@@ -7,8 +7,7 @@ import {MempireToken} from "../src/MempireToken.sol";
 import {MempireCards} from "../src/MempireCards.sol";
 import {MempireArena} from "../src/MempireArena.sol";
 import {MarketMeta} from "../src/MarketMeta.sol";
-import {IPyth} from "../src/interfaces/IPyth.sol";
-import {MockPyth} from "./mocks/MockPyth.sol";
+import {MockV3Aggregator} from "@chainlink/local/src/data-feeds/MockV3Aggregator.sol";
 import {CircleUSDC, IFiatToken} from "./utils/CircleUSDC.sol";
 
 abstract contract Base is Test {
@@ -16,7 +15,8 @@ abstract contract Base is Test {
     MempireCards internal cards;
     MempireArena internal arena;
     MarketMeta internal meta;
-    MockPyth internal pyth;
+    /// One Chainlink Local MockV3Aggregator per fighter (unit tests only; forks read the real Arc feeds).
+    MockV3Aggregator[] internal feeds;
     /// Circle's FiatToken v2.2 at Arc's USDC address, with Arc's EIP-712 domain.
     IFiatToken internal usdc;
 
@@ -38,21 +38,21 @@ abstract contract Base is Test {
         (alice, aliceKey) = makeAddrAndKey("alice");
         (bob, bobKey) = makeAddrAndKey("bob");
 
-        pyth = new MockPyth();
+        vm.warp(1_790_000_000); // a realistic clock, so "24 hours ago" exists
         usdc = CircleUSDC.deploy();
         token = new MempireToken(admin);
-        cards = new MempireCards(
-            admin, token, IERC20(address(usdc)), IPyth(address(pyth)), treasury, MINT_FEE, 60, "https://api.mempire.fun/nft/"
-        );
+        cards = new MempireCards(admin, token, IERC20(address(usdc)), treasury, MINT_FEE, 60, "https://api.mempire.fun/nft/");
         meta = new MarketMeta(admin, forwarder);
         arena = new MempireArena(admin, cards, address(usdc), meta, treasury, 3);
 
         vm.startPrank(admin);
         cards.setArena(address(arena));
         cards.setRelayer(relayer);
-        meta.setOracle(IPyth(address(pyth)), cards);
+        meta.setCards(cards);
         for (uint16 i; i < ROSTER; ++i) {
-            cards.registerCoin(feed(i), string.concat("C", vm.toString(i)), 120);
+            MockV3Aggregator f = new MockV3Aggregator(8, 100e8);
+            feeds.push(f);
+            cards.registerCoin(feed(i), string.concat("C", vm.toString(i)), 26 hours, address(f));
         }
         // Fund the win-reward pool and give both players some $MEMPIRE.
         token.transfer(address(arena), 10_000 ether);
@@ -74,10 +74,10 @@ abstract contract Base is Test {
         }
     }
 
-    /// Mint a card as `who`, paying the USDC fee and the oracle's 1-wei update fee.
+    /// Mint a card as `who`, paying the USDC fee; the price is read from the fighter's feed.
     function mintAs(address who, uint16 coinId) internal returns (uint256 id) {
         vm.prank(who);
-        id = cards.mint{value: 1}(coinId, update(coinId, 1), noCardPermit());
+        id = cards.mint(coinId, noCardPermit());
     }
 
     function noCardPermit() internal pure returns (MempireCards.Permit memory p) {}
@@ -86,9 +86,9 @@ abstract contract Base is Test {
         return keccak256(abi.encode("feed", i));
     }
 
-    function update(uint16 coinId, int64 price) internal pure returns (bytes[] memory u) {
-        u = new bytes[](1);
-        u[0] = abi.encode(feed(coinId), price, int32(-8));
+    /// Publish a new Chainlink round for a fighter, timestamped now.
+    function setPrice(uint16 coinId, int256 price) internal {
+        feeds[coinId].updateAnswer(price);
     }
 
     function starterCoins(uint16 offset) internal pure returns (uint16[] memory ids) {

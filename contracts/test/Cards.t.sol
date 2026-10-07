@@ -4,12 +4,14 @@ pragma solidity ^0.8.28;
 import {Base} from "./Base.t.sol";
 import {MempireCards} from "../src/MempireCards.sol";
 import {CircleUSDC} from "./utils/CircleUSDC.sol";
+import {MockV3Aggregator} from "@chainlink/local/src/data-feeds/MockV3Aggregator.sol";
 
 contract CardsTest is Base {
-    function test_mintWithUsdc_recordsOraclePrice_andPaysTreasury() public {
+    function test_mintWithUsdc_recordsChainlinkPrice_andPaysTreasury() public {
+        setPrice(3, 6_950_000_000_000);
         uint256 before = usdc.balanceOf(treasury);
         vm.prank(alice);
-        uint256 id = cards.mint{value: 1}(3, update(3, 6_950_000_000_000), noCardPermit());
+        uint256 id = cards.mint(3, noCardPermit());
         MempireCards.Card memory c = cards.card(id);
         assertEq(cards.ownerOf(id), alice);
         assertEq(c.coinId, 3);
@@ -24,7 +26,6 @@ contract CardsTest is Base {
     function test_mint_withPermit_oneTx() public {
         (address carol, uint256 carolKey) = makeAddrAndKey("carol");
         CircleUSDC.mint(carol, 1e6);
-        vm.deal(carol, 1 ether);
         uint256 deadline = block.timestamp + 1 hours;
         bytes32 structHash = keccak256(
             abi.encode(
@@ -39,47 +40,63 @@ contract CardsTest is Base {
         (uint8 v, bytes32 r, bytes32 s_) =
             vm.sign(carolKey, keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), structHash)));
         vm.prank(carol);
-        uint256 id = cards.mint{value: 1}(2, update(2, 5), MempireCards.Permit(deadline, v, r, s_));
+        uint256 id = cards.mint(2, MempireCards.Permit(deadline, v, r, s_));
         assertEq(cards.ownerOf(id), carol);
         assertEq(usdc.balanceOf(carol), 1e6 - MINT_FEE);
     }
 
-    function test_mintFee_isCapped_andOracleOwnerSettable() public {
+    function test_mintFee_isCapped_andFeedOwnerSettable() public {
+        MockV3Aggregator moved = new MockV3Aggregator(8, 42e8);
         vm.startPrank(admin);
         vm.expectRevert(MempireCards.WrongPayment.selector);
         cards.setMintFee(5e6 + 1);
         cards.setMintFee(0); // free mints: no USDC pulled at all
-        cards.setPriceOracle(pyth);
+        cards.setCoinFeed(1, address(moved)); // a feed migration
+        vm.expectRevert(MempireCards.UnknownCoin.selector);
+        cards.setCoinFeed(1, address(0));
         vm.stopPrank();
         uint256 before = usdc.balanceOf(alice);
-        mintAs(alice, 1);
+        uint256 id = mintAs(alice, 1);
         assertEq(usdc.balanceOf(alice), before);
+        assertEq(cards.card(id).mintPrice, 42e8);
         vm.prank(alice);
         vm.expectRevert();
-        cards.setPriceOracle(pyth);
+        cards.setCoinFeed(1, address(moved));
     }
 
-    function test_mint_wrongPayment_reverts() public {
+    /// The Chainlink checks: positive answer, complete round, fresh within the coin's bound.
+    function test_mint_refusesNonPositive_stale_andFutureRounds() public {
+        setPrice(3, 0);
         vm.prank(alice);
-        vm.expectRevert(MempireCards.WrongPayment.selector);
-        cards.mint{value: 0}(3, update(3, 1), noCardPermit());
+        vm.expectRevert(MempireCards.BadPrice.selector);
+        cards.mint(3, noCardPermit());
+        setPrice(3, -5);
+        vm.prank(alice);
+        vm.expectRevert(MempireCards.BadPrice.selector);
+        cards.mint(3, noCardPermit());
+
+        setPrice(3, 100e8);
+        vm.warp(block.timestamp + 26 hours + 1); // past heartbeat + grace
+        vm.prank(alice);
+        vm.expectRevert(MempireCards.StalePrice.selector);
+        cards.mint(3, noCardPermit());
+
+        feeds[3].updateRoundData(9, 100e8, block.timestamp + 1 hours, block.timestamp);
+        vm.prank(alice);
+        vm.expectRevert(MempireCards.BadPrice.selector);
+        cards.mint(3, noCardPermit());
+
+        setPrice(3, 101e8); // a fresh round: minting works again
+        mintAs(alice, 3);
     }
 
-    function test_mint_withoutFreshPrice_reverts() public {
-        bytes[] memory none = new bytes[](0);
-        vm.prank(alice);
-        vm.expectRevert(bytes("PriceFeedNotFound"));
-        cards.mint(3, none, noCardPermit());
-    }
-
-    function test_mint_stalePrice_reverts() public {
-        vm.prank(alice);
-        cards.mint{value: 1}(3, update(3, 100), noCardPermit());
-        vm.warp(block.timestamp + 10 minutes);
-        bytes[] memory none = new bytes[](0);
-        vm.prank(alice);
-        vm.expectRevert(bytes("StalePrice"));
-        cards.mint(3, none, noCardPermit());
+    function test_priceOf_reportsFeedDecimals() public {
+        MockV3Aggregator eighteen = new MockV3Aggregator(18, 2e18);
+        vm.prank(admin);
+        uint16 id = cards.registerCoin(keccak256("PAXG / USD"), "PAXG", 26 hours, address(eighteen));
+        (int64 p, int32 e) = cards.priceOf(id);
+        assertEq(p, 2e18);
+        assertEq(e, -18);
     }
 
     function test_mintWithMempire_takesTokensNotUsdc() public {
@@ -87,7 +104,7 @@ contract CardsTest is Base {
         uint256 usdcBefore = usdc.balanceOf(treasury);
         vm.startPrank(alice);
         token.approve(address(cards), type(uint256).max);
-        cards.mintWithMempire{value: 1}(5, update(5, 42));
+        cards.mintWithMempire(5);
         vm.stopPrank();
         assertEq(token.balanceOf(treasury) - tBefore, 250 ether);
         assertEq(usdc.balanceOf(treasury), usdcBefore);
@@ -95,33 +112,37 @@ contract CardsTest is Base {
 
     function test_registerCoins_batch_andPriceAgeBounds() public {
         bytes32[] memory f = new bytes32[](2);
-        f[0] = keccak256("stock");
-        f[1] = keccak256("crypto");
+        f[0] = keccak256("JPY / USD");
+        f[1] = keccak256("HYPE / USD");
         string[] memory t = new string[](2);
-        t[0] = "NVDA";
-        t[1] = "BTC2";
+        t[0] = "JPY";
+        t[1] = "HYPE";
         uint32[] memory a = new uint32[](2);
         a[0] = 4 days;
-        a[1] = 120;
+        a[1] = 26 hours;
+        address[] memory fs = new address[](2);
+        fs[0] = address(new MockV3Aggregator(8, 670_000));
+        fs[1] = address(new MockV3Aggregator(8, 40e8));
         vm.prank(admin);
-        cards.registerCoins(f, t, a);
+        cards.registerCoins(f, t, a, fs);
         assertEq(cards.coinCountTotal(), ROSTER + 2);
         assertEq(cards.coin(ROSTER).maxPriceAge, 4 days);
+        assertEq(cards.coin(ROSTER).feed, fs[0]);
 
-        // A stock priced three days ago (a long weekend) still mints.
-        vm.prank(alice);
-        bytes[] memory u = new bytes[](1);
-        u[0] = abi.encode(f[0], int64(18_000_000_000), int32(-8));
-        cards.mint{value: 1}(ROSTER, u, noCardPermit());
+        // An FX feed that sat through a closed weekend (three days) still mints.
         vm.warp(block.timestamp + 3 days);
+        mintAs(alice, ROSTER);
         vm.prank(alice);
-        cards.mint(ROSTER, new bytes[](0), noCardPermit());
+        vm.expectRevert(MempireCards.StalePrice.selector);
+        cards.mint(ROSTER + 1, noCardPermit());
 
         vm.startPrank(admin);
         vm.expectRevert(MempireCards.BadPriceAge.selector);
-        cards.registerCoin(keccak256("z"), "Z", 5 days);
+        cards.registerCoin(keccak256("z"), "Z", 5 days, fs[1]);
         vm.expectRevert(MempireCards.BadPriceAge.selector);
-        cards.registerCoin(keccak256("z"), "Z", 10);
+        cards.registerCoin(keccak256("z"), "Z", 10, fs[1]);
+        vm.expectRevert(MempireCards.UnknownCoin.selector);
+        cards.registerCoin(keccak256("z"), "Z", 120, address(0));
         vm.stopPrank();
     }
 
@@ -130,16 +151,16 @@ contract CardsTest is Base {
         cards.setCoinActive(2, false);
         vm.prank(alice);
         vm.expectRevert(MempireCards.CoinInactive.selector);
-        cards.mint{value: 1}(2, update(2, 1), noCardPermit());
+        cards.mint(2, noCardPermit());
     }
 
     function test_registerCoin_rejectsDuplicateFeed_andIsOwnerOnly() public {
         vm.prank(admin);
         vm.expectRevert(MempireCards.FeedTaken.selector);
-        cards.registerCoin(feed(0), "DUP", 120);
+        cards.registerCoin(feed(0), "DUP", 120, address(feeds[0]));
         vm.prank(alice);
         vm.expectRevert();
-        cards.registerCoin(keccak256("x"), "X", 120);
+        cards.registerCoin(keccak256("x"), "X", 120, address(feeds[0]));
     }
 
     function test_starter_onlyRelayer_oncePerAddress_distinctCoins() public {
@@ -165,9 +186,9 @@ contract CardsTest is Base {
 
     function test_merge_levelsUp_burnsDuplicate_chargesPerLevel() public {
         vm.startPrank(alice);
-        uint256 keep = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
-        uint256 d1 = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
-        uint256 d2 = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
+        uint256 keep = cards.mint(1, noCardPermit());
+        uint256 d1 = cards.mint(1, noCardPermit());
+        uint256 d2 = cards.mint(1, noCardPermit());
         token.approve(address(cards), type(uint256).max);
 
         uint256 t0 = token.balanceOf(treasury);
@@ -186,8 +207,8 @@ contract CardsTest is Base {
 
     function test_merge_rejectsSelf_differentCoins_foreignCards() public {
         vm.startPrank(alice);
-        uint256 a = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
-        uint256 b = cards.mint{value: 1}(2, update(2, 1), noCardPermit());
+        uint256 a = cards.mint(1, noCardPermit());
+        uint256 b = cards.mint(2, noCardPermit());
         token.approve(address(cards), type(uint256).max);
         vm.expectRevert(MempireCards.SameCard.selector);
         cards.merge(a, a);
@@ -196,7 +217,7 @@ contract CardsTest is Base {
         vm.stopPrank();
 
         vm.prank(bob);
-        uint256 c = cards.mint{value: 1}(1, update(1, 1), noCardPermit());
+        uint256 c = cards.mint(1, noCardPermit());
         vm.prank(alice);
         vm.expectRevert(MempireCards.NotOwner.selector);
         cards.merge(a, c);
@@ -205,13 +226,13 @@ contract CardsTest is Base {
     function test_merge_capsAtTen() public {
         vm.startPrank(alice);
         token.approve(address(cards), type(uint256).max);
-        uint256 keep = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
+        uint256 keep = cards.mint(4, noCardPermit());
         for (uint256 i; i < 9; ++i) {
-            uint256 d = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
+            uint256 d = cards.mint(4, noCardPermit());
             cards.merge(keep, d);
         }
         assertEq(cards.card(keep).level, 10);
-        uint256 extra = cards.mint{value: 1}(4, update(4, 1), noCardPermit());
+        uint256 extra = cards.mint(4, noCardPermit());
         vm.expectRevert(MempireCards.MaxLevel.selector);
         cards.merge(keep, extra);
         vm.stopPrank();

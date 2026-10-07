@@ -18,11 +18,6 @@
         "internalType": "contract IERC20"
       },
       {
-        "name": "oracle_",
-        "type": "address",
-        "internalType": "contract IPyth"
-      },
-      {
         "name": "treasury_",
         "type": "address",
         "internalType": "address"
@@ -570,6 +565,11 @@
             "name": "ticker",
             "type": "string",
             "internalType": "string"
+          },
+          {
+            "name": "feed",
+            "type": "address",
+            "internalType": "address"
           }
         ]
       }
@@ -787,11 +787,6 @@
         "internalType": "uint16"
       },
       {
-        "name": "priceUpdate",
-        "type": "bytes[]",
-        "internalType": "bytes[]"
-      },
-      {
         "name": "permit",
         "type": "tuple",
         "internalType": "struct MempireCards.Permit",
@@ -826,7 +821,7 @@
         "internalType": "uint256"
       }
     ],
-    "stateMutability": "payable"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -873,11 +868,6 @@
         "name": "coinId",
         "type": "uint16",
         "internalType": "uint16"
-      },
-      {
-        "name": "priceUpdate",
-        "type": "bytes[]",
-        "internalType": "bytes[]"
       }
     ],
     "outputs": [
@@ -887,7 +877,7 @@
         "internalType": "uint256"
       }
     ],
-    "stateMutability": "payable"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -943,19 +933,6 @@
   },
   {
     "type": "function",
-    "name": "oracle",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IPyth"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -1001,6 +978,30 @@
   },
   {
     "type": "function",
+    "name": "priceOf",
+    "inputs": [
+      {
+        "name": "coinId",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "price",
+        "type": "int64",
+        "internalType": "int64"
+      },
+      {
+        "name": "expo",
+        "type": "int32",
+        "internalType": "int32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "registerCoin",
     "inputs": [
       {
@@ -1017,6 +1018,11 @@
         "name": "maxAge",
         "type": "uint32",
         "internalType": "uint32"
+      },
+      {
+        "name": "feed",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [
@@ -1046,6 +1052,11 @@
         "name": "maxAges",
         "type": "uint32[]",
         "internalType": "uint32[]"
+      },
+      {
+        "name": "feeds",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [],
@@ -1129,6 +1140,11 @@
             "name": "ticker",
             "type": "string",
             "internalType": "string"
+          },
+          {
+            "name": "feed",
+            "type": "address",
+            "internalType": "address"
           }
         ]
       }
@@ -1219,19 +1235,6 @@
   },
   {
     "type": "function",
-    "name": "setBaseURI",
-    "inputs": [
-      {
-        "name": "uri",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setCoinActive",
     "inputs": [
       {
@@ -1250,12 +1253,17 @@
   },
   {
     "type": "function",
-    "name": "setMintFee",
+    "name": "setCoinFeed",
     "inputs": [
       {
-        "name": "fee",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "coinId",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "feed",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -1263,12 +1271,12 @@
   },
   {
     "type": "function",
-    "name": "setPriceOracle",
+    "name": "setMintFee",
     "inputs": [
       {
-        "name": "oracle_",
-        "type": "address",
-        "internalType": "contract IPyth"
+        "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -1804,6 +1812,25 @@
   },
   {
     "type": "event",
+    "name": "CoinFeedChanged",
+    "inputs": [
+      {
+        "name": "coinId",
+        "type": "uint16",
+        "indexed": true,
+        "internalType": "uint16"
+      },
+      {
+        "name": "feed",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "CoinRegistered",
     "inputs": [
       {
@@ -1837,19 +1864,6 @@
     "type": "event",
     "name": "ConfigChanged",
     "inputs": [],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "OracleChanged",
-    "inputs": [
-      {
-        "name": "oracle",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
     "anonymous": false
   },
   {
@@ -1928,6 +1942,11 @@
   {
     "type": "error",
     "name": "BadDeck",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadPrice",
     "inputs": []
   },
   {
@@ -2124,6 +2143,11 @@
   {
     "type": "error",
     "name": "SameCard",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "StalePrice",
     "inputs": []
   },
   {

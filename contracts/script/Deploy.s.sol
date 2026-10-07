@@ -8,8 +8,9 @@ import {MempireToken} from "../src/MempireToken.sol";
 import {MempireCards} from "../src/MempireCards.sol";
 import {MempireArena} from "../src/MempireArena.sol";
 import {MarketMeta} from "../src/MarketMeta.sol";
-import {SignedPriceOracle} from "../src/SignedPriceOracle.sol";
-import {IPyth} from "../src/interfaces/IPyth.sol";
+import {MirrorAggregator} from "../src/testnet/MirrorAggregator.sol";
+import {MempireCCIPGateway} from "../src/ccip/MempireCCIPGateway.sol";
+import {ITokenMessengerV2} from "../src/interfaces/ITokenMessengerV2.sol";
 
 /// Deploys the whole game to Arc and registers the roster from shared/roster.json.
 /// One script for Arc testnet (5042002), Arc mainnet (5042) and a local Arc fork:
@@ -18,10 +19,14 @@ import {IPyth} from "../src/interfaces/IPyth.sol";
 /// Env:
 ///   DEPLOYER_PRIVATE_KEY  broadcasts; owns the contracts until ADMIN accepts them
 ///   RELAYER               the relay's address: mints starter decks (never the owner)
-///   ORACLE                "signed" (default: deploy a SignedPriceOracle for ORACLE_SIGNER)
-///                         or "pyth" (use PYTH, Pyth's contract: Arc testnet only)
-///   ORACLE_SIGNER         the relay's oracle-signing address (ORACLE=signed)
-///   PYTH                  Pyth on Arc testnet: 0x2880aB155794e7179c9eE2e38200202908C17B43
+///   (prices)              each fighter reads its Chainlink Data Feed proxy from shared/roster.json
+///                         (Arc mainnet addresses). Where that proxy has no code — Arc testnet,
+///                         which Chainlink does not serve — a MirrorAggregator of it is deployed,
+///                         updated by RELAYER from the mainnet feed (testnet only; refused on 5042).
+///   CCIP_ROUTER           Chainlink CCIP router on this chain (enables the cross-chain entry gateway;
+///                         Arc mainnet 0xB797…3A18, testnet 0xdE4E…eab8). Unset = no gateway.
+///   TOKEN_MESSENGER       Circle CCTP V2 TokenMessenger (mainnet 0x28b5…cf5d, testnet 0x8FE6…2DAA)
+///   MAX_CASH_OUT          per-message CCTP cash-out cap through the gateway, USDC 6 decimals (default 100e6)
 ///   CRE_FORWARDER         KeystoneForwarder for MarketMeta.onReport (Arc testnet only; 0 = none)
 ///   TREASURY              receives rake and mint fees (default: deployer)
 ///   ADMIN                 if set and not the deployer: ownership is offered to it (Ownable2Step)
@@ -41,9 +46,9 @@ contract Deploy is Script {
         uint256 pk;
         address deployer;
         address relayer;
-        address oracle; // 0 = deploy a SignedPriceOracle
-        string oracleKind;
-        address oracleSigner;
+        address ccipRouter;
+        address tokenMessenger;
+        uint256 maxCashOut;
         address forwarder;
         address treasury;
         address admin;
@@ -59,7 +64,8 @@ contract Deploy is Script {
         MempireCards cards;
         MarketMeta meta;
         MempireArena arena;
-        address oracle;
+        MempireCCIPGateway gateway;
+        uint256 mirrors;
     }
 
     function run() external virtual {
@@ -69,16 +75,30 @@ contract Deploy is Script {
     function _run(Env memory e) internal {
         require(USDC.code.length > 0, "no USDC at 0x3600...0000: not an Arc chain (or fork)");
         require(e.relayer != e.deployer, "RELAYER must not be the deployer/owner");
-        (bytes32[] memory feeds, string[] memory tickers, uint32[] memory ages) = _roster();
+        (bytes32[] memory feedIds, string[] memory tickers, uint32[] memory ages, address[] memory feeds,
+            uint8[] memory decimals) = _roster();
 
         vm.startBroadcast(e.pk);
         Deployed memory d = _deploy(e);
-        d.cards.registerCoins(feeds, tickers, ages);
+        // Chainlink's proxy where it exists on this chain; a testnet mirror of it where it does not.
+        for (uint256 i; i < feeds.length; ++i) {
+            if (feeds[i].code.length == 0) {
+                require(block.chainid != 5042, "a roster feed has no code on Arc mainnet");
+                feeds[i] = address(
+                    new MirrorAggregator(
+                        e.relayer, feeds[i], decimals[i], string.concat(tickers[i], " / USD (mirror of Arc mainnet)")
+                    )
+                );
+                d.mirrors++;
+            }
+        }
+        d.cards.registerCoins(feedIds, tickers, ages, feeds);
         d.token.transfer(address(d.arena), REWARD_POOL);
         if (e.admin != address(0) && e.admin != e.deployer) {
             d.cards.transferOwnership(e.admin);
             d.meta.transferOwnership(e.admin);
             d.arena.transferOwnership(e.admin);
+            if (address(d.gateway) != address(0)) d.gateway.transferOwnership(e.admin);
         }
         vm.stopBroadcast();
 
@@ -86,7 +106,8 @@ contract Deploy is Script {
         console2.log("MempireCards      ", address(d.cards));
         console2.log("MarketMeta        ", address(d.meta));
         console2.log("MempireArena      ", address(d.arena));
-        console2.log("price oracle      ", d.oracle);
+        console2.log("CCIP gateway      ", address(d.gateway));
+        console2.log("feed mirrors      ", d.mirrors);
         _write(e, d);
     }
 
@@ -94,14 +115,9 @@ contract Deploy is Script {
         e.pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         e.deployer = vm.addr(e.pk);
         e.relayer = vm.envAddress("RELAYER");
-        e.oracleKind = vm.envOr("ORACLE", string("signed"));
-        if (keccak256(bytes(e.oracleKind)) == keccak256("pyth")) {
-            e.oracle = vm.envAddress("PYTH");
-            require(e.oracle.code.length > 0, "PYTH has no code on this chain (Pyth serves Arc testnet only)");
-        } else {
-            e.oracleKind = "signed";
-            e.oracleSigner = vm.envAddress("ORACLE_SIGNER");
-        }
+        e.ccipRouter = vm.envOr("CCIP_ROUTER", address(0));
+        e.tokenMessenger = vm.envOr("TOKEN_MESSENGER", address(0));
+        e.maxCashOut = vm.envOr("MAX_CASH_OUT", uint256(100e6));
         e.forwarder = vm.envOr("CRE_FORWARDER", address(0));
         e.treasury = vm.envOr("TREASURY", e.deployer);
         e.admin = vm.envOr("ADMIN", address(0));
@@ -115,32 +131,52 @@ contract Deploy is Script {
         );
     }
 
-    function _roster() internal view returns (bytes32[] memory feeds, string[] memory tickers, uint32[] memory ages) {
+    function _roster()
+        internal
+        view
+        returns (
+            bytes32[] memory feedIds,
+            string[] memory tickers,
+            uint32[] memory ages,
+            address[] memory feeds,
+            uint8[] memory decimals
+        )
+    {
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../shared/roster.json"));
         uint256 n = abi.decode(vm.parseJson(json, ".coins[*].coinId"), (uint256[])).length;
-        feeds = new bytes32[](n);
+        feedIds = new bytes32[](n);
         tickers = new string[](n);
         ages = new uint32[](n);
+        feeds = new address[](n);
+        decimals = new uint8[](n);
         for (uint256 i; i < n; ++i) {
             string memory k = string.concat(".coins[", vm.toString(i), "]");
             require(json.readUint(string.concat(k, ".coinId")) == i, "roster out of order");
-            feeds[i] = json.readBytes32(string.concat(k, ".feedId"));
+            feedIds[i] = json.readBytes32(string.concat(k, ".feedId"));
             tickers[i] = json.readString(string.concat(k, ".ticker"));
             ages[i] = uint32(json.readUint(string.concat(k, ".maxPriceAge")));
+            feeds[i] = json.readAddress(string.concat(k, ".feed"));
+            decimals[i] = uint8(json.readUint(string.concat(k, ".decimals")));
         }
     }
 
     function _deploy(Env memory e) internal returns (Deployed memory d) {
-        d.oracle = e.oracle == address(0) ? address(new SignedPriceOracle(e.oracleSigner)) : e.oracle;
         d.token = new MempireToken(e.deployer);
-        d.cards = new MempireCards(
-            e.deployer, d.token, IERC20(USDC), IPyth(d.oracle), e.treasury, e.mintFee, e.timeScale, e.baseUri
-        );
+        d.cards = new MempireCards(e.deployer, d.token, IERC20(USDC), e.treasury, e.mintFee, e.timeScale, e.baseUri);
         d.meta = new MarketMeta(e.deployer, e.forwarder);
         d.arena = new MempireArena(e.deployer, d.cards, USDC, d.meta, e.treasury, e.maxTier);
         d.cards.setArena(address(d.arena));
         d.cards.setRelayer(e.relayer);
-        d.meta.setOracle(IPyth(d.oracle), d.cards);
+        d.meta.setCards(d.cards);
+        if (e.ccipRouter != address(0)) {
+            require(e.tokenMessenger != address(0), "CCIP_ROUTER needs TOKEN_MESSENGER (CCTP V2) for cash-outs");
+            d.gateway = new MempireCCIPGateway(
+                e.deployer, e.ccipRouter, d.arena, IERC20(USDC), ITokenMessengerV2(e.tokenMessenger), e.maxCashOut
+            );
+            d.arena.setEntryGateway(address(d.gateway));
+            // Remote entries (Base / Ethereum) are allowlisted once deployed there:
+            // scripts/deploy-remote.sh prints the setRemoteEntry call for the owner.
+        }
     }
 
     function _write(Env memory e, Deployed memory d) internal {
@@ -150,9 +186,10 @@ contract Deploy is Script {
         o.serialize("deployer", e.deployer);
         o.serialize("relayer", e.relayer);
         o.serialize("usdc", USDC);
-        o.serialize("oracle", d.oracle);
-        o.serialize("oracleKind", e.oracleKind);
-        o.serialize("oracleSigner", e.oracleSigner);
+        o.serialize("priceFeeds", d.mirrors == 0 ? string("chainlink") : string("mirror"));
+        o.serialize("ccipRouter", e.ccipRouter);
+        o.serialize("tokenMessenger", e.tokenMessenger);
+        o.serialize("ccipGateway", address(d.gateway));
         o.serialize("creForwarder", e.forwarder);
         o.serialize("treasury", e.treasury);
         o.serialize("admin", e.admin == address(0) ? e.deployer : e.admin);

@@ -109,6 +109,9 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     /// timeouts, cancels and withdrawals are never pausable: no admin switch
     /// can hold a stake hostage.
     bool public paused;
+    /// The cross-chain entry gateway (MempireCCIPGateway) allowed to seat a
+    /// player on their instruction. address(0) disables cross-chain entry.
+    address public entryGateway;
     MarketMeta public marketMeta;
     address public treasury;
     uint16 public rakeBps = 1_000; // 10%
@@ -164,6 +167,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     event PayoutHeld(address indexed currency, address indexed player, uint256 amount);
     event ConfigChanged();
     event LimitsChanged(uint8 maxTier, bool paused);
+    event EntryGatewayChanged(address gateway);
 
     // ─────────────────────────────────────────────────────────────── errors
 
@@ -184,6 +188,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     error TransferFailed();
     error Paused();
     error TierClosed();
+    error NotGateway();
 
     constructor(
         address owner_,
@@ -212,6 +217,11 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
     function setMarketMeta(MarketMeta m) external onlyOwner {
         marketMeta = m;
         emit ConfigChanged();
+    }
+
+    function setEntryGateway(address gateway) external onlyOwner {
+        entryGateway = gateway;
+        emit EntryGatewayChanged(gateway);
     }
 
     /// Open or close stake tiers for new matches, and pause new matches.
@@ -252,17 +262,59 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         nonReentrant
         returns (uint64 id)
     {
+        id = _create(msg.sender, tier, cardIds, session, permit);
+    }
+
+    /// Take the second seat. The stake must match the one already escrowed and
+    /// the two decks must sit within the power band.
+    function joinMatch(uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
+        external
+        payable
+        nonReentrant
+    {
+        _join(msg.sender, id, cardIds, session, permit);
+    }
+
+    /// Open a match for `player`, on the instruction of the cross-chain entry
+    /// gateway (a CCIP message from Base or Ethereum, see MempireCCIPGateway).
+    /// The stake still comes from the player's own USDC on Arc — by the permit
+    /// the player signed — and the deck from the player's own cards; the
+    /// gateway can only seat a player who asked, with what they hold.
+    function createMatchFor(
+        address player,
+        uint8 tier,
+        uint256[] calldata cardIds,
+        address session,
+        Permit calldata permit
+    ) external nonReentrant returns (uint64 id) {
+        if (msg.sender != entryGateway || player == address(0)) revert NotGateway();
+        id = _create(player, tier, cardIds, session, permit);
+    }
+
+    /// Join a match for `player`, on the gateway's instruction. See `createMatchFor`.
+    function joinMatchFor(address player, uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
+        external
+        nonReentrant
+    {
+        if (msg.sender != entryGateway || player == address(0)) revert NotGateway();
+        _join(player, id, cardIds, session, permit);
+    }
+
+    function _create(address player, uint8 tier, uint256[] calldata cardIds, address session, Permit calldata permit)
+        internal
+        returns (uint64 id)
+    {
         if (paused) revert Paused();
         uint128 stake = stakeFor(tier);
         if (stake == 0) revert BadStake();
         if (tier > maxTier) revert TierClosed();
-        uint256 sessionGas = _collectStake(stake, permit);
+        uint256 sessionGas = _collectStake(player, stake, permit);
 
         id = nextMatchId++;
-        (uint32 power, bytes32 deckHash) = cards.lockDeck(msg.sender, cardIds, id);
+        (uint32 power, bytes32 deckHash) = cards.lockDeck(player, cardIds, id);
 
         Match storage m = _matches[id];
-        m.p0 = msg.sender;
+        m.p0 = player;
         m.createdAt = uint64(block.timestamp);
         m.tier = tier;
         m.state = STATE_OPEN;
@@ -276,28 +328,24 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         m.deck0 = deckHash;
 
         _fundSession(session, sessionGas);
-        emit MatchCreated(id, msg.sender, tier, usdc, stake, power, deckHash, cardIds, session);
+        emit MatchCreated(id, player, tier, usdc, stake, power, deckHash, cardIds, session);
     }
 
-    /// Take the second seat. The stake must match the one already escrowed and
-    /// the two decks must sit within the power band.
-    function joinMatch(uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
-        external
-        payable
-        nonReentrant
+    function _join(address player, uint64 id, uint256[] calldata cardIds, address session, Permit calldata permit)
+        internal
     {
         Match storage m = _matches[id];
         if (m.state != STATE_OPEN) revert BadState();
-        if (msg.sender == m.p0 || session == m.p0 || (session != address(0) && session == m.s0)) {
+        if (player == m.p0 || session == m.p0 || (session != address(0) && session == m.s0)) {
             revert SelfMatch();
         }
-        uint256 sessionGas = _collectStake(m.stake, permit);
+        uint256 sessionGas = _collectStake(player, m.stake, permit);
 
-        (uint32 power, bytes32 deckHash) = cards.lockDeck(msg.sender, cardIds, id);
+        (uint32 power, bytes32 deckHash) = cards.lockDeck(player, cardIds, id);
         uint32 diff = power > m.power0 ? power - m.power0 : m.power0 - power;
         if (diff > powerBand) revert PowerMismatch();
 
-        m.p1 = msg.sender;
+        m.p1 = player;
         m.s1 = session;
         m.power1 = power;
         m.deck1 = deckHash;
@@ -306,7 +354,7 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
         m.metaEpoch = address(marketMeta) == address(0) ? 0 : marketMeta.currentEpoch();
 
         _fundSession(session, sessionGas);
-        emit MatchJoined(id, msg.sender, power, deckHash, cardIds, session, m.metaEpoch, m.deadline);
+        emit MatchJoined(id, player, power, deckHash, cardIds, session, m.metaEpoch, m.deadline);
     }
 
     /// Withdraw an open match nobody joined. Free: the stake comes straight back.
@@ -457,17 +505,20 @@ contract MempireArena is IArenaView, Ownable2Step, ReentrancyGuard {
 
     // ─────────────────────────────────────────────────────────────── internals
 
-    function _collectStake(uint128 stake, Permit calldata permit) internal returns (uint256 sessionGas) {
+    function _collectStake(address player, uint128 stake, Permit calldata permit)
+        internal
+        returns (uint256 sessionGas)
+    {
         sessionGas = msg.value;
         if (sessionGas > MAX_SESSION_GAS) revert BadSessionGas();
         if (permit.deadline != 0) {
             // A permit that was front-run has already set the allowance it
             // was going to set; the transfer below is what must succeed.
             try IERC20Permit(usdc).permit(
-                msg.sender, address(this), stake, permit.deadline, permit.v, permit.r, permit.s
+                player, address(this), stake, permit.deadline, permit.v, permit.r, permit.s
             ) {} catch {}
         }
-        IERC20(usdc).safeTransferFrom(msg.sender, address(this), stake);
+        IERC20(usdc).safeTransferFrom(player, address(this), stake);
     }
 
     function _fundSession(address session, uint256 amount) internal {

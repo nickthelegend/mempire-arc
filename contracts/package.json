@@ -1,0 +1,10 @@
+{
+  "name": "mempire-contracts",
+  "private": true,
+  "description": "Chainlink dependencies for the Foundry project (CCIP + Chainlink Local + Data Feeds interfaces)",
+  "dependencies": {
+    "@chainlink/contracts": "1.5.0",
+    "@chainlink/contracts-ccip": "2.0.0",
+    "@chainlink/local": "0.3.1"
+  }
+}

@@ -7,15 +7,14 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {IPyth} from "./interfaces/IPyth.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IArenaView} from "./interfaces/IArenaView.sol";
 
 /// @title Mempire fighters — every card is an ERC-721 you own.
 /// @notice The roster is the market: each card is a fighter for one real asset
-/// (a major, a memecoin or a tokenised stock), identified by its price feed id
-/// (Pyth's ids, so the same asset means the same thing to every oracle the
-/// game can point at). Holding the asset is never required and never touched — a card is a
-/// character, not collateral.
+/// (a major, a DeFi token, gold, or a fiat currency), priced by its Chainlink
+/// Data Feed on Arc. Holding the asset is never required and never touched — a
+/// card is a character, not collateral.
 ///
 /// Power is earned, never bought. A card starts at level 1. Wins pay chests,
 /// chests drop cards, and merging a duplicate into a card you keep promotes it,
@@ -45,9 +44,10 @@ contract MempireCards is ERC721, Ownable2Step {
     uint256 public constant MAX_MINT_FEE = 5e6;
 
     /// The tightest and loosest price-age bounds a fighter may be registered
-    /// with. Crypto trades around the clock and uses the tight end; a stock's
-    /// last print can be a long weekend old, and refusing to mint NVDA on a
-    /// Saturday would be a bug, not a safety property.
+    /// with. Chainlink's Arc feeds have a 24 h heartbeat (plus a deviation
+    /// trigger), so crypto uses ~26 h; an FX feed can sit through a closed
+    /// weekend, and refusing to mint JPY on a Sunday would be a bug, not a
+    /// safety property.
     uint32 public constant MIN_PRICE_AGE = 60;
     uint32 public constant MAX_PRICE_AGE = 4 days;
 
@@ -66,11 +66,12 @@ contract MempireCards is ERC721, Ownable2Step {
     // ─────────────────────────────────────────────────────────────── storage
 
     struct Coin {
-        bytes32 feedId; // Pyth price feed id — the asset's identity
+        bytes32 feedId; // keccak256 of the feed pair ("BTC / USD") — the asset's identity on every chain
         uint8 archetype; // keccak256(feedId) % 6, fixed at registration
         bool active;
         uint32 maxPriceAge; // seconds; stocks need room for closed markets
         string ticker;
+        address feed; // Chainlink AggregatorV3 proxy on this chain
     }
 
     /// One storage slot per card.
@@ -79,7 +80,7 @@ contract MempireCards is ERC721, Ownable2Step {
         uint8 level;
         uint8 archetype;
         uint64 lockedBy; // match id that last locked it; live only while that match holds cards
-        int64 mintPrice; // oracle price at mint (0 for starter and chest cards)
+        int64 mintPrice; // Chainlink answer at mint (0 for starter and chest cards)
         int32 mintExpo;
     }
 
@@ -101,10 +102,6 @@ contract MempireCards is ERC721, Ownable2Step {
     IERC20 public immutable mempire;
     /// USDC on Arc (the ERC-20 interface, 6 decimals): what a mint costs.
     IERC20 public immutable usdc;
-    /// A Pyth-compatible price oracle: Pyth itself where Pyth is deployed (Arc
-    /// testnet), the game's SignedPriceOracle where it is not (Arc mainnet).
-    IPyth public oracle;
-
     address public treasury;
     address public arena;
     address public relayer;
@@ -147,7 +144,7 @@ contract MempireCards is ERC721, Ownable2Step {
     event ChestOpening(uint256 indexed chestId, uint64 revealBlock);
     event ChestOpened(uint256 indexed chestId, address indexed owner, bytes32 seed, uint256[] cardIds);
     event ConfigChanged();
-    event OracleChanged(address oracle);
+    event CoinFeedChanged(uint16 indexed coinId, address feed);
 
     // Card sources, for the indexer.
     uint8 internal constant SRC_MINT = 0;
@@ -160,6 +157,8 @@ contract MempireCards is ERC721, Ownable2Step {
     error UnknownCoin();
     error BadPriceAge();
     error CoinInactive();
+    error BadPrice();
+    error StalePrice();
     error FeedTaken();
     error WrongPayment();
     error NotOwner();
@@ -181,7 +180,6 @@ contract MempireCards is ERC721, Ownable2Step {
         address owner_,
         IERC20 mempire_,
         IERC20 usdc_,
-        IPyth oracle_,
         address treasury_,
         uint256 mintFee_,
         uint32 timeScale_,
@@ -190,7 +188,6 @@ contract MempireCards is ERC721, Ownable2Step {
         if (mintFee_ > MAX_MINT_FEE) revert WrongPayment();
         mempire = mempire_;
         usdc = usdc_;
-        oracle = oracle_;
         treasury = treasury_;
         mintFee = mintFee_;
         timeScale = timeScale_ == 0 ? 1 : timeScale_;
@@ -220,43 +217,51 @@ contract MempireCards is ERC721, Ownable2Step {
         emit ConfigChanged();
     }
 
-    /// Point mints at another Pyth-compatible oracle (e.g. Pyth itself, once
-    /// it serves Arc mainnet). Prices only gate and stamp mints; they never
-    /// move a stake.
-    function setPriceOracle(IPyth oracle_) external onlyOwner {
-        oracle = oracle_;
-        emit OracleChanged(address(oracle_));
-    }
-
-    function setBaseURI(string calldata uri) external onlyOwner {
-        baseURI = uri;
-        emit ConfigChanged();
+    /// Repoint a fighter at another Chainlink feed proxy for the same pair (a
+    /// feed migration). Prices only gate and stamp mints and feed the bounded
+    /// market meta; they never move a stake.
+    function setCoinFeed(uint16 coinId, address feed) external onlyOwner {
+        if (feed == address(0)) revert UnknownCoin();
+        _coin(coinId).feed = feed;
+        emit CoinFeedChanged(coinId, feed);
     }
 
     /// Add fighters to the roster. The archetype is derived from the feed id,
     /// not chosen, so nobody — the admin included — can hand a favoured asset a
     /// better class.
-    function registerCoins(bytes32[] calldata feedIds, string[] calldata tickers, uint32[] calldata maxAges)
-        external
-        onlyOwner
-    {
-        if (feedIds.length != tickers.length || feedIds.length != maxAges.length) revert BadDeck();
+    function registerCoins(
+        bytes32[] calldata feedIds,
+        string[] calldata tickers,
+        uint32[] calldata maxAges,
+        address[] calldata feeds
+    ) external onlyOwner {
+        if (feedIds.length != tickers.length || feedIds.length != maxAges.length || feedIds.length != feeds.length) {
+            revert BadDeck();
+        }
         for (uint256 i; i < feedIds.length; ++i) {
-            _register(feedIds[i], tickers[i], maxAges[i]);
+            _register(feedIds[i], tickers[i], maxAges[i], feeds[i]);
         }
     }
 
-    function registerCoin(bytes32 feedId, string calldata ticker, uint32 maxAge) external onlyOwner returns (uint16) {
-        return _register(feedId, ticker, maxAge);
+    function registerCoin(bytes32 feedId, string calldata ticker, uint32 maxAge, address feed)
+        external
+        onlyOwner
+        returns (uint16)
+    {
+        return _register(feedId, ticker, maxAge, feed);
     }
 
-    function _register(bytes32 feedId, string calldata ticker, uint32 maxAge) internal returns (uint16 coinId) {
+    function _register(bytes32 feedId, string calldata ticker, uint32 maxAge, address feed)
+        internal
+        returns (uint16 coinId)
+    {
+        if (feed == address(0)) revert UnknownCoin();
         if (feedRegistered[feedId]) revert FeedTaken();
         if (maxAge < MIN_PRICE_AGE || maxAge > MAX_PRICE_AGE) revert BadPriceAge();
         feedRegistered[feedId] = true;
         uint8 arch = archetypeFor(feedId);
         coinId = uint16(_coins.length);
-        _coins.push(Coin({feedId: feedId, archetype: arch, active: true, maxPriceAge: maxAge, ticker: ticker}));
+        _coins.push(Coin({feedId: feedId, archetype: arch, active: true, maxPriceAge: maxAge, ticker: ticker, feed: feed}));
         emit CoinRegistered(coinId, feedId, arch, ticker);
     }
 
@@ -273,20 +278,13 @@ contract MempireCards is ERC721, Ownable2Step {
 
     // ─────────────────────────────────────────────────────────────── minting
 
-    /// Mint a fighter for USDC. The caller posts a fresh price update for the
-    /// asset in the same transaction; the card records the price it was minted
-    /// at, and an asset with no live price cannot be minted at all — that is
-    /// the eligibility gate. The fee is pulled with an allowance or an EIP-2612
-    /// permit signed in the same breath; msg.value (native USDC) covers only
-    /// the oracle's update fee.
-    function mint(uint16 coinId, bytes[] calldata priceUpdate, Permit calldata permit)
-        external
-        payable
-        returns (uint256 id)
-    {
-        uint256 updateFee = oracle.getUpdateFee(priceUpdate);
-        if (msg.value != updateFee) revert WrongPayment();
-        (int64 price, int32 expo) = _postPrice(coinId, priceUpdate, updateFee);
+    /// Mint a fighter for USDC. The card records its asset's Chainlink price at
+    /// the moment of minting, read from the feed in this transaction — and an
+    /// asset whose feed is stale or non-positive cannot be minted at all: that
+    /// is the eligibility gate. The fee is pulled with an allowance or an
+    /// EIP-2612 permit signed in the same breath.
+    function mint(uint16 coinId, Permit calldata permit) external returns (uint256 id) {
+        (int64 price, int32 expo) = priceOf(coinId);
         uint256 fee = mintFee;
         if (fee != 0) {
             if (permit.deadline != 0) {
@@ -299,12 +297,9 @@ contract MempireCards is ERC721, Ownable2Step {
         id = _mintCard(msg.sender, coinId, SRC_MINT, price, expo);
     }
 
-    /// The same card for 250 $MEMPIRE instead of USDC. One price or the other,
-    /// never both; msg.value covers only the oracle's update fee.
-    function mintWithMempire(uint16 coinId, bytes[] calldata priceUpdate) external payable returns (uint256 id) {
-        uint256 updateFee = oracle.getUpdateFee(priceUpdate);
-        if (msg.value != updateFee) revert WrongPayment();
-        (int64 price, int32 expo) = _postPrice(coinId, priceUpdate, updateFee);
+    /// The same card for 250 $MEMPIRE instead of USDC. One price or the other, never both.
+    function mintWithMempire(uint16 coinId) external returns (uint256 id) {
+        (int64 price, int32 expo) = priceOf(coinId);
         mempire.safeTransferFrom(msg.sender, treasury, MINT_FEE_MEMPIRE);
         id = _mintCard(msg.sender, coinId, SRC_MEMPIRE, price, expo);
     }
@@ -326,15 +321,20 @@ contract MempireCards is ERC721, Ownable2Step {
         }
     }
 
-    function _postPrice(uint16 coinId, bytes[] calldata priceUpdate, uint256 updateFee)
-        internal
-        returns (int64 price, int32 expo)
-    {
+    /// A fighter's current Chainlink price, checked: the coin is mintable, the
+    /// answer is positive, the round is complete and no older than the coin's
+    /// freshness bound (a feed's heartbeat plus grace; FX feeds get a long
+    /// weekend). Reverts rather than returning a number nobody published.
+    function priceOf(uint16 coinId) public view returns (int64 price, int32 expo) {
         Coin storage c = _coin(coinId);
         if (!c.active) revert CoinInactive();
-        oracle.updatePriceFeeds{value: updateFee}(priceUpdate);
-        IPyth.Price memory p = oracle.getPriceNoOlderThan(c.feedId, c.maxPriceAge);
-        return (p.price, p.expo);
+        AggregatorV3Interface feed = AggregatorV3Interface(c.feed);
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
+        if (answer <= 0 || answer > type(int64).max) revert BadPrice();
+        if (updatedAt == 0 || answeredInRound < roundId || updatedAt > block.timestamp) revert BadPrice();
+        if (block.timestamp - updatedAt > c.maxPriceAge) revert StalePrice();
+        price = int64(answer);
+        expo = -int32(uint32(feed.decimals()));
     }
 
     function _mintCard(address to, uint16 coinId, uint8 source, int64 price, int32 expo) internal returns (uint256 id) {

@@ -3,19 +3,19 @@ pragma solidity ^0.8.28;
 
 import {Deploy} from "./Deploy.s.sol";
 
-/// The game on a local **fork of Arc testnet** run by Circle's Arc Foundry
+/// The game on a local **fork of Arc mainnet** run by Circle's Arc Foundry
 /// (`arc-anvil --network arc`, which moves Arc's native USDC; plain anvil
-/// can't). Arc's real USDC (0x3600…0000, FiatToken with Arc's precompile) comes
-/// from the fork; our contracts are deployed with real signed transactions; and
-/// prices come from a SignedPriceOracle that only accepts updates signed by the
-/// relay's oracle key, from live market quotes — the same setup as mainnet.
+/// can't). From the fork come Arc's real USDC (0x3600…0000), Chainlink's real
+/// Data Feeds (every fighter's price), Chainlink's real CCIP router and
+/// Circle's CCTP V2 TokenMessenger; our contracts are deployed with real signed
+/// transactions — to the local fork only, never to mainnet.
 ///
-///   arc-anvil --network arc --fork-url https://rpc.testnet.arc.io --chain-id 31337 --port 8710
+///   arc-anvil --network arc --fork-url https://rpc.mainnet.arc.io --chain-id 31337 --port 8710
 ///   forge script script/DeployLocal.s.sol --rpc-url http://127.0.0.1:8710 --broadcast
 ///
 /// Keys derive from anvil's public test mnemonic at indices 7100+ (#7100
 /// deploys and owns, #7101 is the relayer, #7102 stands in for the CRE
-/// forwarder, #7104 signs oracle prices). Not the usual #0–#9: those are public
+/// forwarder). Not the usual #0–#9: those are public
 /// enough that Arc testnet carries 7702 sweepers on them and has blocklisted
 /// some (#1 is refused by NativeCoinControl), and a fork inherits both. Never
 /// use any of these anywhere real.
@@ -29,8 +29,10 @@ contract DeployLocal is Deploy {
         e.pk = vm.deriveKey(MNEMONIC, BASE);
         e.deployer = vm.addr(e.pk);
         e.relayer = vm.addr(vm.deriveKey(MNEMONIC, BASE + 1));
-        e.oracleKind = "signed";
-        e.oracleSigner = vm.envOr("ORACLE_SIGNER", vm.addr(vm.deriveKey(MNEMONIC, BASE + 4)));
+        // Arc mainnet's CCIP router and CCTP V2 TokenMessenger, present on the fork.
+        e.ccipRouter = vm.envOr("CCIP_ROUTER", 0xB79791184973589c38e114D43Eb8E4588C283A18);
+        e.tokenMessenger = vm.envOr("TOKEN_MESSENGER", 0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d);
+        e.maxCashOut = 100e6;
         e.forwarder = vm.envOr("CRE_FORWARDER", vm.addr(vm.deriveKey(MNEMONIC, BASE + 2)));
         e.treasury = e.deployer;
         e.maxTier = 3;
