@@ -17,7 +17,6 @@ import { verifySettledMatch } from './chain-verify.js';
 import { registerClanRoutes } from './clans.js';
 import { keeperStatus, startKeeper } from './keeper.js';
 import { pythMode } from './pyth.js';
-import { registerPrivyRoutes } from './privy.js';
 import { registerLockerRoutes } from './locker.js';
 import { createMemoryDb } from './memstore.js';
 import { registerMarketRoutes } from './market.js';
@@ -140,9 +139,9 @@ const onboardGate = (req, res, next) => (onboardLimit ? onboardLimit(req, res, n
  */
 const paramAddress = (req) => normAddress(req.params.address);
 
-/** The arena's stake currencies, and the leaderboard column each one ranks in. */
-const CURRENCIES = ['MON', 'AUSD'];
-const NET_FIELD = { MON: 'netMon', AUSD: 'netAusd' };
+/** The arena's stake currency, and the leaderboard column it ranks in. */
+const CURRENCIES = ['USDC'];
+const NET_FIELD = { USDC: 'netUsdc' };
 
 /*
  * Chain-facing reads that need no database: roster prices, the Pyth update
@@ -160,7 +159,7 @@ app.get('/api/health', async (_req, res) => {
     rpc: RPC_URL,
     deployment: Boolean(deployment),
     relayer: relayerAddress(),
-    pyth: pythMode(),
+    oracle: pythMode(),
     keeper: keeperStatus(),
   };
   if (!client) return res.json({ ok: true, db: 'memory', persistent: false, chain });
@@ -352,8 +351,7 @@ app.post('/api/match/:address', requireWallet('match.post'), async (req, res) =>
           // whether or not escrow opened, so counting it unconditionally made
           // this column a running total of money that never existed — a
           // guest's unstaked wins included.
-          netMon: verified?.currency === 'MON' ? verified.net : 0,
-          netAusd: verified?.currency === 'AUSD' ? verified.net : 0,
+          netUsdc: verified?.currency === 'USDC' ? verified.net : 0,
           /*
            * Bounded, because three towers is all there are.
            *
@@ -605,20 +603,19 @@ app.get('/api/ladder', async (_req, res) => {
 /**
  * Top players by chain-verified winnings — powers the Empire leaderboard.
  *
- * `?currency=MON` (default) or `?currency=AUSD` picks the column to rank by.
- * Both columns ride on every row; they are never added together.
+ * Ranked by net USDC won (6-decimal units, chain-verified).
  */
 app.get('/api/leaderboard', async (req, res) => {
-  const currency = String(req.query.currency ?? 'MON').toUpperCase();
-  if (!CURRENCIES.includes(currency)) return res.status(400).json({ error: 'currency must be MON or AUSD' });
+  const currency = String(req.query.currency ?? 'USDC').toUpperCase();
+  if (!CURRENCIES.includes(currency)) return res.status(400).json({ error: 'currency must be USDC' });
   try {
     const rows = await leaderboard
-      .find({}, { projection: { netMon: 1, netAusd: 1, wins: 1, losses: 1, crowns: 1, matches: 1 } })
+      .find({}, { projection: { netUsdc: 1, wins: 1, losses: 1, crowns: 1, matches: 1 } })
       .sort({ [NET_FIELD[currency]]: -1 })
       .limit(25)
       .toArray();
     res.json(rows.map(({ _id, ...r }) => ({
-      address: _id, netMon: 0, netAusd: 0, wins: 0, losses: 0, crowns: 0, matches: 0, ...r,
+      address: _id, netUsdc: 0, wins: 0, losses: 0, crowns: 0, matches: 0, ...r,
     })));
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -664,18 +661,16 @@ const server = await (async () => {
    */
   credits = db.collection('match_credits');
   await credits.createIndex({ at: 1 }, { expireAfterSeconds: 400 * 24 * 3600 });
-  await leaderboard.createIndex({ netMon: -1 });
-  await leaderboard.createIndex({ netAusd: -1 });
+  await leaderboard.createIndex({ netUsdc: -1 });
   // Both the ladder listing and every rank lookup sort on this.
   await ladder.createIndex({ trophies: -1 });
   registerClanRoutes(app, db);
 
-  // Onboarding: the starter deck, AUSD and the MON drip, signed by the
+  // Onboarding: the starter deck and (test chains) the USDC drip, signed by the
   // relayer. Registers either way and reports itself unavailable (503) when
   // this chain has no deployment or no relayer key, rather than 404ing.
   registerOnboardRoutes(app, db, { ipGate: onboardGate, readGate });
   registerPlayerRoutes(app, db);
-  registerPrivyRoutes(app);
   registerLockerRoutes(app, db, { gate: (req, res, next) => (readLimit ? readLimit(req, res, next) : next()) });
   registerTelemetryRoutes(app, db, requireWallet);
   registerInsightRoutes(app, db);

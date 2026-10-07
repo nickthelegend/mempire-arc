@@ -8,7 +8,7 @@ import { startRelay, tally } from './test-util.mjs';
 
 const { check, done } = tally();
 const PORT = 8797;
-const relay = await startRelay(PORT, { CHAIN_ID: '10143' });
+const relay = await startRelay(PORT, { CHAIN_ID: '5042002' });
 const API = `http://127.0.0.1:${PORT}`;
 const hex = (n) => randomBytes(n).toString('hex');
 

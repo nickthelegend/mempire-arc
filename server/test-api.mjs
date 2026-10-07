@@ -145,7 +145,7 @@ await check('a malformed address is refused before it reaches Mongo', async () =
 await check('POST /api/match/:address records a settled match', async () => {
   cover('POST', '/api/match/:address');
   const { status } = await req('POST', `/api/match/${ALICE}`, {
-    won: true, crowns: [3, 0], pot: 0.1, payout: 0.09, currency: 'MON', tier: 1,
+    won: true, crowns: [3, 0], pot: 0.1, payout: 0.09, currency: 'USDC', tier: 1,
   }, alice, 'match.post');
   assert.ok(status < 300, `record returned ${status}`);
 });
@@ -154,12 +154,12 @@ await check('an escrowed claim the chain cannot back credits no money', async ()
   // No such arena match exists on this relay's chain, so the money column
   // must stay at zero however large the claimed payout.
   await req('POST', `/api/match/${ALICE}`, {
-    won: true, crowns: [1, 0], escrowed: true, matchId: 999999, payout: 999, currency: 'MON',
+    won: true, crowns: [1, 0], escrowed: true, matchId: 999999, payout: 999, currency: 'USDC',
   }, alice, 'match.post');
   const { json } = await req('GET', '/api/leaderboard');
   const row = json.find((r) => r.address === ALICE.toLowerCase());
   assert.ok(row, 'the reporting wallet is not on the board');
-  assert.equal(row.netMon, 0, `a claim the chain does not support was credited: ${row.netMon}`);
+  assert.equal(row.netUsdc, 0, `a claim the chain does not support was credited: ${row.netUsdc}`);
 });
 
 await check('GET /api/leaderboard returns rows shaped for the client', async () => {
@@ -170,7 +170,7 @@ await check('GET /api/leaderboard returns rows shaped for the client', async () 
   if (json.length) {
     const r = json[0];
     assert.ok(typeof r.address === 'string', 'a row has no address');
-    assert.ok('netMon' in r && 'netAusd' in r, 'a row is missing a per-currency money column');
+    assert.ok('netUsdc' in r, 'a row is missing the USDC money column');
     assert.ok(!('_id' in r) || r._id === undefined, 'Mongo _id leaked to the client');
   }
 });

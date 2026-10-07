@@ -26,7 +26,7 @@ import { abis, deployment, normAddress, publicClient } from './chain.js';
 
 const TIERS = 4;
 /** The arena's two stake currencies. Both seats of an escrow must use the same one. */
-const CURRENCIES = ['MON', 'AUSD'];
+const CURRENCIES = ['USDC'];
 
 /*
  * The market-meta epoch, read at most every thirty seconds.
@@ -154,8 +154,8 @@ export function registerMatchmaker(server, db) {
    * standard match would desync on the first tick, because the sim's timing
    * lives in the format. Ranked is separate so a ladder match is never paired
    * with a casual one, and tier and currency keep stakes equal: the arena
-   * makes the joiner match the opener's stake exactly, so a MON player paired
-   * with an AUSD player is a join that can only revert.
+   * makes the joiner match the opener's stake exactly; the currency stays in
+   * the key so a second stake currency could never be paired with the first.
    */
   const queueKey = (tier, currency, format, ranked) => `${tier}:${currency}:${format}:${ranked ? 'r' : 'c'}`;
 
@@ -273,7 +273,7 @@ export function registerMatchmaker(server, db) {
           const address = normAddress(msg.address);
           if (!address || !validDeck(msg.deck)) return;
           const currency = CURRENCIES.includes(String(msg.currency).toUpperCase())
-            ? String(msg.currency).toUpperCase() : 'MON';
+            ? String(msg.currency).toUpperCase() : 'USDC';
 
           /*
            * Ranked play requires a proven address; casual does not.

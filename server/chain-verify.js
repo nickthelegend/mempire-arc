@@ -46,11 +46,10 @@ async function rakeBps() {
  * stake currency, or the address is not a seat). Callers treat null as "no
  * money moved".
  *
- * Returns `{ currency: 'MON'|'AUSD', net, netUnits, pot, won, draw, players }`,
+ * Returns `{ currency: 'USDC', net, netUnits, pot, won, draw, players }`,
  * where `net` is the player's change in display units (a JS number, for the
  * leaderboard's `$inc`) and `netUnits` the exact base-unit figure as a string.
- * MON and AUSD are reported separately and must be credited separately: adding
- * 0.05 MON to 5 AUSD gives a number that means nothing.
+ * USDC is the arena's only stake currency (6 decimals).
  */
 export async function verifySettledMatch(matchId, address) {
   if (!deployment) return null;

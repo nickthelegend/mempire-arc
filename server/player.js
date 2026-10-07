@@ -175,7 +175,7 @@ export function registerPlayerRoutes(app, db) {
         mode: typeof b.mode === 'string' ? b.mode.slice(0, 16) : null,
         staked: !!b.staked,
         stake: Number.isFinite(Number(b.stake)) ? Number(b.stake) : 0,
-        currency: ['MON', 'AUSD'].includes(b.currency) ? b.currency : null,
+        currency: b.currency === 'USDC' ? b.currency : null,
         onchainMatchId: Number.isFinite(Number(b.onchainMatchId)) ? Number(b.onchainMatchId) : null,
         durationMs: Number.isFinite(Number(b.durationMs)) ? Number(b.durationMs) : null,
         crowns: Number.isFinite(Number(b.crowns)) ? Number(b.crowns) : null,

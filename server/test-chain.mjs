@@ -1,11 +1,14 @@
 /**
  * A throwaway chain for the suites that write to it.
  *
- * An anvil fork of Monad testnet on its own port and chain id (8613 / 31338),
- * with our contracts deployed by `DeployLocal` — so the real Agora AUSD and its
- * faucet are there, exactly as on the dev chain. The suites warp time and spend
- * the faucet's cooldown; doing that on the dev chain (8612 / 31337) would leave
- * every live price "stale" and the faucet busy for whoever is playing on it.
+ * A fork of Arc testnet on its own port and chain id (8711 / 31338), run by
+ * Circle's Arc Foundry (`arc-anvil --network arc`: plain anvil can fork Arc but
+ * can't move its native USDC), with our contracts deployed by `DeployLocal` —
+ * so Arc's real USDC is there, exactly as on the dev chain. The suites warp
+ * time; doing that on the dev chain (8710 / 31337) would leave every live price
+ * "stale" for whoever is playing on it.
+ *
+ * Binaries: ARC_ANVIL / ARC_FORGE (default `arc-anvil` / `forge` on PATH).
  *
  * `stop()` kills anvil and removes the 31338 deployment files (all gitignored).
  * If a test chain is already up on the port with its deployment, it is reused
@@ -16,11 +19,15 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mnemonicToAccount } from 'viem/accounts';
+import { DEV_BASE, DEV_MNEMONIC } from './test-util.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-export const TEST_PORT = Number(process.env.TEST_CHAIN_PORT ?? 8613);
+export const TEST_PORT = Number(process.env.TEST_CHAIN_PORT ?? 8711);
 export const TEST_CHAIN_ID = 31338;
-const FORK_URL = process.env.FORK_URL ?? 'https://testnet-rpc.monad.xyz';
+const FORK_URL = process.env.FORK_URL ?? 'https://rpc.testnet.arc.io';
+const ANVIL = process.env.ARC_ANVIL ?? 'arc-anvil';
+const FORGE = process.env.ARC_FORGE ?? 'forge';
 const rootDep = `${ROOT}shared/deployments/${TEST_CHAIN_ID}.json`;
 const serverDep = `${ROOT}server/shared/deployments/${TEST_CHAIN_ID}.json`;
 
@@ -35,16 +42,12 @@ async function chainId(rpcUrl) {
 }
 
 /*
- * anvil's dev accounts use a public mnemonic, and on Monad testnet those
- * addresses carry EIP-7702 delegations to sweeper contracts that forward any
- * MON they receive. The fork inherits that code, so the first mint fee paid to
- * the owner (#0) empties it. Clear the delegations and restore the balances.
+ * The fork's dev accounts: anvil's public mnemonic at indices 7100+ (see
+ * DeployLocal.s.sol). Each gets 10,000 USDC (native balance, 18 decimals; the
+ * ERC-20 view shows the same), and any code is cleared in case a delegation was
+ * ever set on one upstream.
  */
-const DEV_ACCOUNTS = [
-  '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-  '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC', '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
-  '0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65',
-];
+const DEV_ACCOUNTS = [0, 1, 2, 3, 4, 5].map((i) => mnemonicToAccount(DEV_MNEMONIC, { addressIndex: DEV_BASE + i }).address);
 async function scrubDevAccounts(rpcUrl) {
   const call = (method, params) => fetch(rpcUrl, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -52,13 +55,13 @@ async function scrubDevAccounts(rpcUrl) {
   });
   for (const a of DEV_ACCOUNTS) {
     await call('anvil_setCode', [a, '0x']);
-    await call('anvil_setBalance', [a, '0x21e19e0c9bab2400000']); // 10,000 MON
+    await call('anvil_setBalance', [a, '0x21e19e0c9bab2400000']); // 10,000 USDC
   }
 }
 
 const viemChain = (rpcUrl) => ({
-  id: TEST_CHAIN_ID, name: 'Anvil (test fork)',
-  nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+  id: TEST_CHAIN_ID, name: 'Arc fork (test)',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: { default: { http: [rpcUrl] } },
 });
 
@@ -71,9 +74,9 @@ export async function startTestChain({ port = TEST_PORT } = {}) {
   }
   if (existing !== null) throw new Error(`port ${port} already serves chain ${existing}; set TEST_CHAIN_PORT`);
 
-  const anvil = spawn('anvil', [
-    '--port', String(port), '--chain-id', String(TEST_CHAIN_ID), '--prune-history', '300',
-    '--fork-url', FORK_URL, '--silent', '--hardfork', 'cancun', '--retries', '10', '--timeout', '60000',
+  const anvil = spawn(ANVIL, [
+    '--network', 'arc', '--port', String(port), '--chain-id', String(TEST_CHAIN_ID), '--prune-history', '300',
+    '--fork-url', FORK_URL, '--silent', '--retries', '10', '--timeout', '60000',
   ], { stdio: 'ignore' });
   const kill = () => { try { anvil.kill('SIGKILL'); } catch { /* gone */ } };
   process.on('exit', kill);
@@ -84,7 +87,7 @@ export async function startTestChain({ port = TEST_PORT } = {}) {
   if ((await chainId(rpcUrl)) !== TEST_CHAIN_ID) { kill(); throw new Error('the test fork did not come up'); }
   await scrubDevAccounts(rpcUrl);
 
-  const forge = spawnSync('forge', ['script', 'script/DeployLocal.s.sol', '--rpc-url', rpcUrl, '--broadcast', '--silent'], {
+  const forge = spawnSync(FORGE, ['script', 'script/DeployLocal.s.sol', '--rpc-url', rpcUrl, '--broadcast', '--silent'], {
     cwd: `${ROOT}contracts`, encoding: 'utf8',
   });
   if (forge.status !== 0 || !existsSync(rootDep)) {

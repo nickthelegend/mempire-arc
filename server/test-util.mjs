@@ -8,13 +8,26 @@
  * drifted into asserting behaviour the server no longer had.
  */
 import { spawn } from 'node:child_process';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from 'viem/accounts';
 
 /** The exact text the relay verifies (see `authMessage` in auth.js). */
 export const authMessage = (address, action, ts) => `Mempire\naction: ${action}\nwallet: ${address}\nts: ${ts}`;
 
 /** A fresh throwaway wallet. */
 export const freshAccount = () => privateKeyToAccount(generatePrivateKey());
+
+/**
+ * A local-fork dev key, derived from anvil's public test mnemonic at index
+ * 7100 + i (so no key literal lives in this repo, and none of the #0–#9
+ * accounts Arc testnet has swept or blocklisted). Local forks only: i = 0 deploys,
+ * 1 is the relayer and 4 the oracle signer that DeployLocal registers.
+ */
+export const DEV_MNEMONIC = 'test test test test test test test test test test test junk';
+export const DEV_BASE = 7100;
+export function devKey(i) {
+  const pk = mnemonicToAccount(DEV_MNEMONIC, { addressIndex: DEV_BASE + i }).getHdKey().privateKey;
+  return `0x${Buffer.from(pk).toString('hex')}`;
+}
 
 /** `{ address, ts, signature }` for `action`, merged over `body`. */
 export async function signed(account, action, body = {}, address = account.address) {
@@ -89,4 +102,24 @@ export async function startRelay(port, env = {}) {
       child.kill('SIGTERM');
     }),
   };
+}
+
+/** Arc's USDC ERC-20 interface (6 decimals): FiatToken with EIP-712 domain "USDC" / "2". */
+export const USDC = '0x3600000000000000000000000000000000000000';
+const usdcNoncesAbi = [{ type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }];
+
+/** An EIP-2612 permit for `value` USDC units to `spender`, as the contracts' Permit struct. */
+export async function usdcPermit(account, pub, chainId, spender, value) {
+  const nonce = await pub.readContract({ address: USDC, abi: usdcNoncesAbi, functionName: 'nonces', args: [account.address] });
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const sig = await account.signTypedData({
+    domain: { name: 'USDC', version: '2', chainId, verifyingContract: USDC },
+    types: { Permit: [
+      { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
+    ] },
+    primaryType: 'Permit',
+    message: { owner: account.address, spender, value, nonce, deadline },
+  });
+  return { deadline, v: Number(`0x${sig.slice(130, 132)}`), r: `0x${sig.slice(2, 66)}`, s: `0x${sig.slice(66, 130)}` };
 }

@@ -14,22 +14,34 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createPublicClient, defineChain, erc20Abi, http, keccak256 } from 'viem';
 
-export const CHAIN_ID = Number(process.env.CHAIN_ID ?? 10143);
-export const RPC_URL = process.env.RPC_URL || 'https://testnet-rpc.monad.xyz';
+/** Arc mainnet and Arc testnet. */
+export const ARC_MAINNET = 5042;
+export const ARC_TESTNET = 5042002;
+
+export const CHAIN_ID = Number(process.env.CHAIN_ID ?? ARC_TESTNET);
+const DEFAULT_RPC = {
+  [ARC_MAINNET]: 'https://rpc.mainnet.arc.io',
+  [ARC_TESTNET]: 'https://rpc.testnet.arc.io',
+};
+export const RPC_URL = process.env.RPC_URL || DEFAULT_RPC[CHAIN_ID] || 'http://127.0.0.1:8710';
 
 /**
- * Chains where handing out MON and AUSD is a test convenience rather than a
- * gift of real money: Monad testnet, and a local anvil.
+ * Chains where handing out USDC is a test convenience rather than a gift of
+ * real money: Arc testnet, and a local fork of it.
  *
  * The onboarding drip spends whatever the relayer key holds, and that key is a
  * hot wallet in an env var. On any other chain the drip is off regardless of
- * configuration — "free MON endpoint on mainnet" is a drain waiting for a
+ * configuration — "free USDC endpoint on mainnet" is a drain waiting for a
  * scanner to find it. The starter deck is not gated: it costs only gas, the
  * contract allows it once per address, and it is the product on every chain.
  */
-/** Local anvil chains: the dev stack (31337) and the throwaway test fork (31338). */
+/** Local Arc forks: the dev stack (31337) and the throwaway test fork (31338). */
 export const IS_DEV_CHAIN = CHAIN_ID === 31337 || CHAIN_ID === 31338;
-export const IS_TEST_CHAIN = CHAIN_ID === 10143 || IS_DEV_CHAIN;
+export const IS_TEST_CHAIN = CHAIN_ID === ARC_TESTNET || IS_DEV_CHAIN;
+export const IS_MAINNET = CHAIN_ID === ARC_MAINNET;
+
+/** Arc's USDC ERC-20 interface (6 decimals): the same address on mainnet, testnet and a fork. */
+export const USDC = '0x3600000000000000000000000000000000000000';
 
 const read = (rel) => JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8'));
 const abiOf = (name) => {
@@ -42,6 +54,7 @@ export const abis = {
   arena: abiOf('MempireArena'),
   token: abiOf('MempireToken'),
   marketMeta: abiOf('MarketMeta'),
+  oracle: abiOf('SignedPriceOracle'),
   erc20: erc20Abi,
 };
 
@@ -105,8 +118,9 @@ export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export const chain = defineChain({
   id: CHAIN_ID,
-  name: CHAIN_ID === 10143 ? 'Monad Testnet' : IS_DEV_CHAIN ? 'Anvil' : `Chain ${CHAIN_ID}`,
-  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  name: CHAIN_ID === ARC_MAINNET ? 'Arc' : CHAIN_ID === ARC_TESTNET ? 'Arc Testnet' : IS_DEV_CHAIN ? 'Arc fork (local)' : `Chain ${CHAIN_ID}`,
+  // Native USDC: 18 decimals natively; the ERC-20 at USDC views the same balance with 6.
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
 });
 
@@ -124,9 +138,22 @@ export function publicClient() {
   return pub;
 }
 
-/** Stake currencies the arena accepts, keyed by the address in `Match.currency`. */
+/** The arena's one stake currency, keyed by the address in `Match.currency`. */
 export function currencyOf(address) {
-  if (sameAddress(address, ZERO_ADDRESS)) return { symbol: 'MON', decimals: 18 };
-  if (deployment?.ausd && sameAddress(address, deployment.ausd)) return { symbol: 'AUSD', decimals: 6 };
+  if (sameAddress(address, deployment?.usdc ?? USDC)) return { symbol: 'USDC', decimals: 6 };
   return null;
+}
+
+/**
+ * EIP-1559 fees for a send. Arc's mempool silently drops a transaction whose
+ * maxFeePerGas is under 20 gwei — no error and no receipt — so the node's
+ * estimate is floored there. Gas is USDC: at Arc's ~20–25 gwei a 100k-gas call
+ * costs about a fifth of a cent.
+ */
+export const MIN_FEE_PER_GAS = 20_000_000_000n;
+export async function feeParams() {
+  const f = await publicClient().estimateFeesPerGas().catch(() => null);
+  const maxFeePerGas = f?.maxFeePerGas && f.maxFeePerGas > MIN_FEE_PER_GAS * 2n ? f.maxFeePerGas : MIN_FEE_PER_GAS * 2n;
+  const maxPriorityFeePerGas = f?.maxPriorityFeePerGas ?? 1_000_000_000n;
+  return { maxFeePerGas, maxPriorityFeePerGas: maxPriorityFeePerGas > maxFeePerGas ? maxFeePerGas : maxPriorityFeePerGas };
 }

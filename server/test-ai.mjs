@@ -9,7 +9,7 @@
  * (tools, tool_choice, the bearer key, reasoning carried across turns) is
  * asserted rather than assumed, and the failure paths (bad calls, text
  * answers, a model that never answers) are exercised without a Moonshot
- * account. Needs no chain: CHAIN_ID=10143 and no deployment calls.
+ * account. Needs no chain: CHAIN_ID=5042002 (Arc testnet) and no deployment calls.
  */
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
@@ -67,7 +67,7 @@ function board(over = {}) {
 
 // ── (a) no key: not configured, no stand-in ────────────────────────────────
 console.log('no key');
-const off = await startRelay(await freePort(8796), { CHAIN_ID: '10143' });
+const off = await startRelay(await freePort(8796), { CHAIN_ID: '5042002' });
 try {
   const st = await fetch(`${off.base}/api/ai/status`).then((x) => x.json());
   check('status says off and names the missing key', st.mode === 'off' && st.model === null && st.missing?.includes('MOONSHOT_API_KEY'));
@@ -118,7 +118,7 @@ const text = (content) => ({ body: { choices: [{ message: { role: 'assistant', c
 
 const KEY = 'sk-test-not-a-real-key';
 const kimi = await startRelay(await freePort(8795), {
-  CHAIN_ID: '10143',
+  CHAIN_ID: '5042002',
   MOONSHOT_API_KEY: KEY,
   MOONSHOT_BASE_URL: `http://127.0.0.1:${fakePort}/v1`,
   AI_TIMEOUT_MS: '800',

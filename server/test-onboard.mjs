@@ -3,17 +3,13 @@
  *
  * Starts its own test fork (test-chain.mjs) and relay (in-memory store) and proves the things
  * a new player depends on: a signed onboard mints exactly eight starter cards
- * covering every archetype, the MON drip lands, a second onboard mints nothing
+ * covering every archetype, the USDC drip lands (in both of USDC's views on
+ * Arc: native 18-decimal and ERC-20 6-decimal), a second onboard mints nothing
  * and drips nothing, a bad or replayed signature is refused, and three players
  * onboarding at the same instant all get their decks — the relayer's nonce
  * queue is what that last one is testing.
  *
- * `AUSD_FAUCET` is Agora's real testnet faucet, present on the fork. It has a
- * cooldown, so of several players onboarding together one is paid and the rest
- * are `queued` for a retry — and a busy faucet is not a player who failed to
- * onboard, so every one of them must still get a 200.
- *
- *   node test-onboard.mjs   (forks Monad testnet on :8613, chain 31338)
+ *   node test-onboard.mjs   (forks Arc testnet with arc-anvil on :8711, chain 31338)
  *
  * PORT overrides the relay port. The relayer key is anvil's account
  * #1, which is the relayer that deployment registers; it is a well-known test
@@ -22,12 +18,14 @@
 import { createPublicClient, erc20Abi, formatEther, http, parseEther } from 'viem';
 import { readFileSync } from 'node:fs';
 import { startTestChain } from './test-chain.mjs';
-import { client, freshAccount, signed, startRelay, tally } from './test-util.mjs';
+import { client, devKey, freshAccount, signed, startRelay, tally } from './test-util.mjs';
 
 const tc = await startTestChain();
 const RPC_URL = tc.rpcUrl;
 const PORT = Number(process.env.PORT ?? 8792);
-const RELAYER_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+const RELAYER_KEY = devKey(1);
+const USDC = '0x3600000000000000000000000000000000000000';
+const DRIP = parseEther('2'); // 2 USDC, native units
 
 const deployment = tc.dep;
 const cardsAbi = JSON.parse(readFileSync(new URL('./shared/abi/MempireCards.json', import.meta.url), 'utf8'));
@@ -41,12 +39,11 @@ const cardsOf = async (address) => {
 
 const { check, done } = tally();
 
-console.log(`onboarding → anvil ${RPC_URL}, relay :${PORT}\n`);
+console.log(`onboarding → Arc fork ${RPC_URL}, relay :${PORT}\n`);
 const relay = await startRelay(PORT, {
   CHAIN_ID: String(tc.chainId),
   RPC_URL,
   RELAYER_PRIVATE_KEY: RELAYER_KEY,
-  AUSD_FAUCET: deployment.ausdFaucet,
   PUBLIC_APP_URL: 'https://mempire.test',
 });
 const req = client(relay.base);
@@ -68,22 +65,17 @@ try {
 
   console.log('\n2. first onboard');
   const before = await req('GET', `/api/onboard/${alice.address}`);
-  check('status before: starter not claimed, no MON',
-    before.status === 200 && before.data.starterClaimed === false && before.data.mon.wei === '0',
+  check('status before: starter not claimed, no USDC',
+    before.status === 200 && before.data.starterClaimed === false && before.data.usdc.wei === '0',
     JSON.stringify(before.data).slice(0, 120));
 
   const body = await signed(alice, 'onboard');
   const first = await req('POST', '/api/onboard', body);
   check('signed onboard is 200', first.status === 200, `${first.status} ${JSON.stringify(first.data).slice(0, 200)}`);
   check('starter reported minted', first.data?.starter === 'minted');
-  check('MON drip reported sent', first.data?.mon === 'sent');
-  check('AUSD from the real faucet: sent, or queued inside its cooldown', ['sent', 'queued'].includes(first.data?.ausd), first.data?.ausd);
-  if (first.data?.ausd === 'sent') {
-    const ausd = await chain.readContract({ address: deployment.ausd, abi: erc20Abi, functionName: 'balanceOf', args: [alice.address] });
-    check('the faucet\'s AUSD landed', ausd > 0n, String(ausd));
-  }
+  check('USDC drip reported sent', first.data?.usdc === 'sent');
   check('tx hashes returned for the mint and the drip',
-    /^0x[0-9a-f]{64}$/.test(first.data?.txs?.starter ?? '') && /^0x[0-9a-f]{64}$/.test(first.data?.txs?.mon ?? ''));
+    /^0x[0-9a-f]{64}$/.test(first.data?.txs?.starter ?? '') && /^0x[0-9a-f]{64}$/.test(first.data?.txs?.usdc ?? ''));
 
   const owned = await cardsOf(alice.address);
   check('exactly 8 cards on chain', owned.ids.length === 8, `${owned.ids.length}`);
@@ -97,8 +89,10 @@ try {
   check('the coins are the advertised starter deck',
     coins.slice().sort((a, b) => a - b).join() === (first.data?.starterCoins ?? []).slice().sort((a, b) => a - b).join());
 
-  const mon = await chain.getBalance({ address: alice.address });
-  check('the MON drip landed (0.25, enough for a first stake)', mon === parseEther('0.25'), formatEther(mon));
+  const native = await chain.getBalance({ address: alice.address });
+  check('the USDC drip landed natively (2 USDC: a $1 stake, its gas float, some mints)', native === DRIP, formatEther(native));
+  const erc20 = await chain.readContract({ address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [alice.address] });
+  check('the same 2 USDC shows in the ERC-20 view (6 decimals): one balance, one token', erc20 === 2_000_000n, String(erc20));
 
   console.log('\n3. once per address');
   const replay = await req('POST', '/api/onboard', body);
@@ -108,11 +102,11 @@ try {
   const lower = await req('POST', '/api/onboard', await signed(alice, 'onboard', {}, alice.address.toLowerCase()));
   check('the lowercase spelling of the same address is also 409', lower.status === 409, lower.data?.error);
   check('still exactly 8 cards', (await cardsOf(alice.address)).ids.length === 8);
-  check('no second drip', (await chain.getBalance({ address: alice.address })) === parseEther('0.25'));
+  check('no second drip', (await chain.getBalance({ address: alice.address })) === DRIP);
 
   const after = await req('GET', `/api/onboard/${alice.address.toLowerCase()}`);
   check('status after: starter claimed, claim complete',
-    after.data?.starterClaimed === true && after.data?.claim?.complete === true && after.data?.mon?.balance === '0.25',
+    after.data?.starterClaimed === true && after.data?.claim?.complete === true && after.data?.usdc?.balance === '2' && after.data?.usdc?.units === '2000000',
     JSON.stringify(after.data?.claim ?? null).slice(0, 120));
 
   console.log('\n4. concurrency');
@@ -123,7 +117,7 @@ try {
     results.map((r) => `${r.status}${r.data?.errors ? ` ${JSON.stringify(r.data.errors).slice(0, 80)}` : ''}`).join(' | '));
   const decks = await Promise.all([bob, carol, dave].map((a) => cardsOf(a.address)));
   check('each holds exactly 8 cards', decks.every((d) => d.ids.length === 8), decks.map((d) => d.ids.length).join(','));
-  const nonces = await Promise.all(results.flatMap((r) => [r.data?.txs?.starter, r.data?.txs?.mon])
+  const nonces = await Promise.all(results.flatMap((r) => [r.data?.txs?.starter, r.data?.txs?.usdc])
     .filter(Boolean).map((hash) => chain.getTransaction({ hash }).then((t) => t.nonce)));
   check('six relayer transactions, six distinct nonces', nonces.length === 6 && new Set(nonces).size === 6, nonces.join(','));
 
@@ -133,6 +127,9 @@ try {
   const ratio = Number(mintTx.gas) / Number(mintRcpt.gasUsed);
   check('the mint was sent with an estimated limit, not a blanket default', ratio > 1 && ratio < 1.6,
     `limit ${mintTx.gas} / used ${mintRcpt.gasUsed} = ${ratio.toFixed(3)}`);
+  check('maxFeePerGas respects Arc\'s 20 gwei mempool floor', mintTx.maxFeePerGas >= 20_000_000_000n, String(mintTx.maxFeePerGas));
+  const usdcGas = Number(mintRcpt.gasUsed * mintRcpt.effectiveGasPrice) / 1e18;
+  check('eight starter mints cost the relayer a few cents of USDC gas at most', usdcGas < 0.05, `${mintRcpt.gasUsed} gas = ${usdcGas.toFixed(6)} USDC`);
 
   console.log('\n6. card metadata');
   const cardId = owned.ids[0];

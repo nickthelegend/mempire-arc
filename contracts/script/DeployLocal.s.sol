@@ -13,21 +13,25 @@ import {Deploy} from "./Deploy.s.sol";
 ///   arc-anvil --network arc --fork-url https://rpc.testnet.arc.io --chain-id 31337 --port 8710
 ///   forge script script/DeployLocal.s.sol --rpc-url http://127.0.0.1:8710 --broadcast
 ///
-/// Keys are anvil's well-known dev accounts, derived from its public test
-/// mnemonic: #0 deploys and owns, #1 is the relayer, #2 stands in for the CRE
-/// forwarder, #4 signs oracle prices. Never use these anywhere real.
+/// Keys derive from anvil's public test mnemonic at indices 7100+ (#7100
+/// deploys and owns, #7101 is the relayer, #7102 stands in for the CRE
+/// forwarder, #7104 signs oracle prices). Not the usual #0–#9: those are public
+/// enough that Arc testnet carries 7702 sweepers on them and has blocklisted
+/// some (#1 is refused by NativeCoinControl), and a fork inherits both. Never
+/// use any of these anywhere real.
 contract DeployLocal is Deploy {
     string internal constant MNEMONIC = "test test test test test test test test test test test junk";
+    uint32 internal constant BASE = 7100;
 
     function run() external override {
         require(block.chainid != 5042 && block.chainid != 5042002, "DeployLocal is for a local fork only");
         Env memory e;
-        e.pk = vm.deriveKey(MNEMONIC, 0);
+        e.pk = vm.deriveKey(MNEMONIC, BASE);
         e.deployer = vm.addr(e.pk);
-        e.relayer = vm.addr(vm.deriveKey(MNEMONIC, 1));
+        e.relayer = vm.addr(vm.deriveKey(MNEMONIC, BASE + 1));
         e.oracleKind = "signed";
-        e.oracleSigner = vm.envOr("ORACLE_SIGNER", vm.addr(vm.deriveKey(MNEMONIC, 4)));
-        e.forwarder = vm.envOr("CRE_FORWARDER", vm.addr(vm.deriveKey(MNEMONIC, 2)));
+        e.oracleSigner = vm.envOr("ORACLE_SIGNER", vm.addr(vm.deriveKey(MNEMONIC, BASE + 4)));
+        e.forwarder = vm.envOr("CRE_FORWARDER", vm.addr(vm.deriveKey(MNEMONIC, BASE + 2)));
         e.treasury = e.deployer;
         e.maxTier = 3;
         e.mintFee = 50_000;

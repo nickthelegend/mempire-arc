@@ -1,25 +1,24 @@
 /**
- * Onboarding: a starter deck, some AUSD and a little MON, once per address.
+ * Onboarding: a starter deck and, on test chains, a little USDC, once per address.
  *
  * # Why this exists
  *
  * "Your bags are your army" is the premise, and a wallet that has just arrived
  * has no army. A staked match needs eight cards locked into the arena, gas to
- * create or join it, and a stake. Without this a new player can open every
- * screen and play none of them.
+ * create or join it, and a stake. On Arc the gas *is* the stake currency —
+ * USDC — so a player only ever needs one token.
  *
  *  - **Cards.** `MempireCards.mintStarter` mints eight distinct fighters, once
  *    per address, and only the relayer may call it — so the deck exists before
- *    the player has ever held MON.
- *  - **AUSD.** On testnet, Agora's faucet (`AUSD_FAUCET`) hands out AUSD for the
- *    dollar stake tier. It has a global cooldown, so a request that lands
- *    inside someone else's cooldown is queued and retried, not failed.
- *  - **MON.** A drip (`ONBOARD_MON_DRIP`, default 0.25) for gas and a first
- *    stake. A staked match forwards a 0.2 MON gas float to the session key
- *    (swept back afterwards) plus the stake tx's own gas, ~0.23 MON in all at
- *    testnet's 100 gwei, so the drip must cover that or a new player's first
- *    "$1 match" is blocked on gas. Only if the address holds less than that already,
- *    and only on a test chain (see `IS_TEST_CHAIN`).
+ *    the player has ever held a cent. This runs on every chain, mainnet
+ *    included: it costs the relayer only gas (fractions of a cent on Arc).
+ *  - **USDC.** On a test chain only (Arc testnet, a local Arc fork), a drip
+ *    (`ONBOARD_USDC_DRIP`, default 2 USDC) that covers a first $1 stake, its
+ *    session-key gas float and a few card mints. It is sent as native value:
+ *    Arc's native balance and its ERC-20 USDC are one balance, so the same
+ *    transfer pays gas and funds the stake. On mainnet the drip is off
+ *    regardless of configuration; players bring USDC (any wallet, an
+ *    exchange, or CCTP from another chain — see /api/deposit).
  *
  * # Abuse
  *
@@ -32,13 +31,13 @@
  *
  * # Partial success
  *
- * Three transactions, not atomic. Each step's outcome is recorded on the claim,
+ * Two transactions, not atomic. Each step's outcome is recorded on the claim,
  * and a claim with a failed step may be retried — which re-runs only the steps
  * that did not land. The starter mint is guarded by the chain itself
  * (`starterClaimed`), and the drip by the claim record, so a retry can finish a
  * half-delivered kit but never pays twice.
  */
-import { formatEther, formatUnits, parseEther, parseEventLogs } from 'viem';
+import { formatEther, parseEther, parseEventLogs } from 'viem';
 import { requireWallet } from './auth.js';
 import {
   IS_TEST_CHAIN, abis, archetypeOf, coinById, deployment, normAddress, publicClient, roster,
@@ -53,7 +52,7 @@ const DECK_SIZE = 8;
  * eight cards. Anything not listed here comes after, in roster order.
  */
 const PREFERRED = [
-  'BTC', 'ETH', 'SOL', 'MON', 'DOGE', 'BONK', 'PEPE', 'NVDA',
+  'BTC', 'ETH', 'SOL', 'DOGE', 'LINK', 'BONK', 'PEPE', 'NVDA',
   'WIF', 'SHIB', 'TSLA', 'AAPL', 'XRP', 'LINK', 'POPCAT', 'SPY',
 ];
 
@@ -89,25 +88,12 @@ export function chooseStarterDeck(coins, archetypeFor) {
   return picked.map((c) => c.coinId);
 }
 
-/** `requestFunds(address)` on Agora's testnet AUSD faucet. */
-const AUSD_FAUCET_ABI = [{
-  type: 'function',
-  name: 'requestFunds',
-  stateMutability: 'nonpayable',
-  inputs: [{ name: 'to', type: 'address' }],
-  outputs: [],
-}];
-/** The faucet's cooldown is global and sixty seconds; retry a little after it. */
-const AUSD_RETRY_MS = 65_000;
-const AUSD_MAX_ATTEMPTS = 20;
-
 /**
  * Gas headroom the relayer must keep beyond the drip itself before it accepts
- * a claim. Eight mints at Monad testnet's ~100 gwei base fee, charged on the
- * gas limit, are a few hundredths of a MON; this leaves room for that and the
- * AUSD call with margin.
+ * a claim. Eight mints cost well under a cent of USDC at Arc's ~20–25 gwei base
+ * fee; this leaves a wide margin.
  */
-const GAS_RESERVE = parseEther('0.2');
+const GAS_RESERVE = parseEther('0.05');
 
 const short = (e) => String(e?.shortMessage ?? e?.message ?? e).split('\n')[0].slice(0, 200);
 
@@ -115,11 +101,11 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
   const pass = (_req, _res, next) => next();
   const claims = db.collection('onboard_claims');
 
+  // Native USDC has 18 decimals, so parseEther reads "2" as 2 USDC.
   const drip = (() => {
-    const raw = process.env.ONBOARD_MON_DRIP ?? '0.25';
-    try { return parseEther(raw); } catch { return parseEther('0.25'); }
+    const raw = process.env.ONBOARD_USDC_DRIP ?? '2';
+    try { return parseEther(raw); } catch { return parseEther('2'); }
   })();
-  const ausdFaucet = normAddress(process.env.AUSD_FAUCET ?? '');
 
   /*
    * The starter deck, chosen once at boot from the vendored roster — and then
@@ -170,59 +156,8 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
     .finally(() => {
       const deck = starter.map((id) => coinById.get(id).ticker).join(' ');
       console.log(`onboard: relayer ${relayerAddress() ?? 'none'} · starter ${deck} · ${canMint ? 'minting' : `not minting (${bootNote})`}`
-        + ` · ausd ${ausdFaucet ? 'faucet' : 'off'} · drip ${IS_TEST_CHAIN ? formatEther(drip) : 'off (not a test chain)'} MON`);
+        + ` · drip ${IS_TEST_CHAIN ? `${formatEther(drip)} USDC` : 'off (not a test chain)'}`);
     });
-
-  // ── the AUSD retry queue ───────────────────────────────────────────────────
-
-  /*
-   * Addresses still owed AUSD, oldest first.
-   *
-   * The faucet allows one request per minute across everyone, so two players
-   * arriving within a minute of each other is enough for the second to be
-   * refused — that is a scheduling problem, not a failure. The owed state lives
-   * on the claim document, so a restart reloads it rather than forgetting.
-   */
-  const owedAusd = [];
-  let ausdTimer = null;
-
-  async function requestAusd(address) {
-    const { hash } = await sendRelayerTx({
-      address: ausdFaucet, abi: AUSD_FAUCET_ABI, functionName: 'requestFunds', args: [address],
-    });
-    return hash;
-  }
-
-  function scheduleAusd() {
-    if (ausdTimer || !owedAusd.length) return;
-    ausdTimer = setTimeout(async () => {
-      ausdTimer = null;
-      const address = owedAusd.shift();
-      if (!address) return;
-      const doc = await claims.findOne({ _id: address }).catch(() => null);
-      const attempts = (doc?.ausdAttempts ?? 0) + 1;
-      try {
-        const hash = await requestAusd(address);
-        await claims.updateOne({ _id: address }, {
-          $set: { 'steps.ausd': 'sent', 'txs.ausd': hash, ausdAttempts: attempts },
-        }).catch(() => {});
-      } catch (e) {
-        const giveUp = attempts >= AUSD_MAX_ATTEMPTS;
-        await claims.updateOne({ _id: address }, {
-          $set: { 'steps.ausd': giveUp ? 'failed' : 'queued', ausdAttempts: attempts, ausdError: short(e) },
-        }).catch(() => {});
-        if (!giveUp) owedAusd.push(address);
-      }
-      scheduleAusd();
-    }, AUSD_RETRY_MS);
-    ausdTimer.unref?.();
-  }
-
-  if (ausdFaucet) {
-    claims.find({ 'steps.ausd': 'queued' }).toArray()
-      .then((rows) => { for (const r of rows) owedAusd.push(r._id); scheduleAusd(); })
-      .catch(() => {});
-  }
 
   // ── the steps ─────────────────────────────────────────────────────────────
 
@@ -243,21 +178,7 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
     return { status: 'minted', tx: hash, cardIds };
   }
 
-  async function stepAusd(address) {
-    if (!ausdFaucet) return { status: 'unconfigured' };
-    if (!IS_TEST_CHAIN) return { status: 'unconfigured' };
-    try {
-      return { status: 'sent', tx: await requestAusd(address) };
-    } catch (e) {
-      // Almost always the faucet's global cooldown. Queue it; the player is
-      // told it is coming rather than that it failed.
-      owedAusd.push(address);
-      scheduleAusd();
-      return { status: 'queued', error: short(e) };
-    }
-  }
-
-  async function stepMon(address, client) {
+  async function stepUsdc(address, client) {
     if (!IS_TEST_CHAIN || drip === 0n) return { status: 'unconfigured' };
     const balance = await client.getBalance({ address });
     if (balance >= drip) return { status: 'skipped' };
@@ -292,8 +213,8 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
     const needed = GAS_RESERVE + (IS_TEST_CHAIN ? drip : 0n);
     if (funds < needed) {
       return res.status(503).json({
-        error: 'the onboarding relayer is out of MON — nothing was claimed, try again later',
-        relayerMon: formatEther(funds),
+        error: 'the onboarding relayer is out of USDC for gas — nothing was claimed, try again later',
+        relayerUsdc: formatEther(funds),
       });
     }
 
@@ -329,8 +250,7 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
           error: prior?.running ? 'onboarding for this address is already in progress' : 'this address is already onboarded',
           claimedAt: prior?.at ?? null,
           starter: prior?.steps?.starter ?? null,
-          ausd: prior?.steps?.ausd ?? null,
-          mon: prior?.steps?.mon ?? null,
+          usdc: prior?.steps?.usdc ?? null,
           txs: prior?.txs ?? {},
         });
       }
@@ -359,12 +279,9 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
 
     // The deck first: it is the one step without which nothing else matters.
     await run('starter', () => stepStarter(address, client));
-    await Promise.all([
-      run('ausd', () => stepAusd(address)),
-      run('mon', () => stepMon(address, client)),
-    ]);
+    await run('usdc', () => stepUsdc(address, client));
 
-    const complete = ['starter', 'ausd', 'mon'].every((k) => settled(steps[k]));
+    const complete = ['starter', 'usdc'].every((k) => settled(steps[k]));
     await claims.updateOne({ _id: address }, {
       $set: { running: false, complete, steps, txs, updatedAt: new Date(), ...(Object.keys(errors).length ? { errors } : {}) },
     }).catch(() => {});
@@ -375,8 +292,7 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
       ok: complete,
       address,
       starter: steps.starter,
-      ausd: steps.ausd,
-      mon: steps.mon,
+      usdc: steps.usdc,
       txs,
       ...(cardIds ? { cardIds } : {}),
       starterCoins: starter,
@@ -396,19 +312,16 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
     if (!deployment) return res.status(503).json({ error: 'no contracts deployed on this chain' });
     try {
       const client = publicClient();
-      const [starterClaimed, mon, ausd, claim] = await Promise.all([
+      const [starterClaimed, native, claim] = await Promise.all([
         client.readContract({ address: deployment.cards, abi: abis.cards, functionName: 'starterClaimed', args: [address] }),
         client.getBalance({ address }),
-        deployment.ausd
-          ? client.readContract({ address: deployment.ausd, abi: abis.erc20, functionName: 'balanceOf', args: [address] })
-          : Promise.resolve(null),
         claims.findOne({ _id: address }),
       ]);
+      // One balance, two views: native (18 decimals) and the ERC-20 (6 decimals, truncated).
       res.json({
         address,
         starterClaimed,
-        mon: { balance: formatEther(mon), wei: mon.toString() },
-        ausd: ausd === null ? null : { balance: formatUnits(ausd, 6), units: ausd.toString() },
+        usdc: { balance: formatEther(native), units: (native / 10n ** 12n).toString(), wei: native.toString() },
         claim: claim
           ? { at: claim.at, complete: !!claim.complete, steps: claim.steps ?? {}, txs: claim.txs ?? {} }
           : null,

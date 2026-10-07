@@ -56,7 +56,7 @@ await check('B5', 'GET', `/api/player/${ADDR}`, 200);
 await check('B5b', 'GET', '/api/player/NotARealAddress11111111111111', 400);
 await check('B6', 'PUT', `/api/player/${ADDR}`, [400, 401]);
 await check('B7', 'GET', '/api/leaderboard', 200, (b) => Array.isArray(b));
-await check('B7b', 'GET', '/api/leaderboard?currency=AUSD', 200, (b) => Array.isArray(b));
+await check('B7b', 'GET', '/api/leaderboard?currency=USDC', 200, (b) => Array.isArray(b));
 await check('B7c', 'GET', '/api/leaderboard?currency=SOL', 400);
 await check('B8a', 'GET', '/api/ladder', 200);
 await check('B8b', 'GET', `/api/ladder/${ADDR}`, 200);

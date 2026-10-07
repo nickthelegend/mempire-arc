@@ -4,8 +4,8 @@
  * Verifies the behaviours the game depends on: pairing with a shared seed and
  * market-meta epoch, input relay, the hash referee voiding on divergence, the
  * disconnect → opponent_left forfeit path, the escrow handshake relay, and the
- * pool rules — one wallet (in any letter case) cannot fight itself, MON and
- * AUSD stakes never meet, and a ranked queue needs a signature. The lockstep
+ * pool rules — one wallet (in any letter case) cannot fight itself, two USDC
+ * stakes of different tiers never meet, and a ranked queue needs a signature. The lockstep
  * sim itself is proven deterministic by app/scripts/sim-test.ts; this proves
  * the wire between two of them.
  *
@@ -172,25 +172,25 @@ async function main() {
   g.close();
 
   // ── stake currency pools ───────────────────────────────────────────────
-  console.log('\n7. stake currencies');
+  console.log('\n7. USDC stake pools');
   const m1 = client('M1');
   const a1 = client('A1');
   await m1.open();
   await a1.open();
-  m1.send({ t: 'queue', address: addr(), tier: 2, currency: 'MON', deck: DECK, deckHash: 'm' });
+  m1.send({ t: 'queue', address: addr(), tier: 1, currency: 'USDC', deck: DECK, deckHash: 'm' });
   const qm = await m1.next('queued');
-  check('queued ack names the currency', qm.currency === 'MON', qm.currency);
-  a1.send({ t: 'queue', address: addr(), tier: 2, currency: 'AUSD', deck: DECK, deckHash: 'u' });
+  check('queued ack names the currency', qm.currency === 'USDC', qm.currency);
+  a1.send({ t: 'queue', address: addr(), tier: 2, currency: 'USDC', deck: DECK, deckHash: 'u' });
   await a1.next('queued');
   let crossed = false;
   await m1.next('matched', 800).then(() => { crossed = true; }).catch(() => {});
-  check('a MON stake is never paired with an AUSD stake', !crossed);
+  check('a $5 stake is never paired with a $25 stake', !crossed);
   const a2 = client('A2');
   await a2.open();
-  a2.send({ t: 'queue', address: addr(), tier: 2, currency: 'ausd', deck: DECK, deckHash: 'v' });
+  a2.send({ t: 'queue', address: addr(), tier: 2, currency: 'usdc', deck: DECK, deckHash: 'v' });
   const [x1, x2] = await Promise.all([a1.next('matched'), a2.next('matched')]);
-  check('two AUSD stakes pair, and both are told the currency',
-    x1.currency === 'AUSD' && x2.currency === 'AUSD');
+  check('two $25 USDC stakes pair, and both are told the currency',
+    x1.currency === 'USDC' && x2.currency === 'USDC');
   check('both seats get the same market-meta epoch',
     Number.isInteger(x1.metaEpoch) && x1.metaEpoch === x2.metaEpoch, `${x1.metaEpoch} / ${x2.metaEpoch}`);
 

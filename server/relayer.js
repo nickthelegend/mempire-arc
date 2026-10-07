@@ -4,8 +4,8 @@
  * # What it may do
  *
  * `MempireCards.mintStarter` is relayer-only, so this key is what turns a new
- * address into a player with a deck. It also pays the onboarding MON drip and
- * pokes the AUSD faucet. It is deliberately NOT the deployer or owner key —
+ * address into a player with a deck. It also pays the onboarding USDC drip on
+ * test chains. It is deliberately NOT the deployer or owner key —
  * that one can change the treasury, the rake and the relayer itself, and a web
  * server is the wrong place for it. Losing this key costs a refill and a
  * `setRelayer`; losing the owner key costs the game. Boot refuses a relayer
@@ -26,15 +26,16 @@
  *
  * # Gas
  *
- * Monad charges for the gas *limit*, not the gas used. A generous default limit
- * is therefore a fee, paid on every transaction, for nothing. Every send is
- * estimated and given a 15% margin — enough to absorb state moving between
- * the estimate and inclusion, and no more.
+ * Gas on Arc is paid in USDC. Every send is estimated and given a 15% margin —
+ * enough to absorb state moving between the estimate and inclusion, and no
+ * more. Arc's mempool silently drops anything with maxFeePerGas under 20 gwei
+ * (no error, no receipt), so fees are floored there rather than trusted to
+ * the node's suggestion.
  */
 import { createWalletClient, http } from 'viem';
 import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 import { CHAIN_ID } from './chain.js';
-import { RPC_URL, abis, chain, deployment, publicClient, sameAddress } from './chain.js';
+import { RPC_URL, abis, chain, deployment, feeParams, publicClient, sameAddress } from './chain.js';
 
 const GAS_MARGIN_NUM = 115n;
 const GAS_MARGIN_DEN = 100n;
@@ -106,8 +107,8 @@ let tail = Promise.resolve();
  * `call` is either `{ to, value }` for a plain transfer or
  * `{ address, abi, functionName, args, value }` for a contract write. The gas
  * estimate doubles as a simulation, so a call that would revert fails here with
- * the contract's reason and costs nothing — on Monad a reverted transaction
- * still pays for its whole gas limit.
+ * the contract's reason and costs nothing — a reverted transaction still pays
+ * for its gas.
  *
  * Resolves `{ hash, receipt }`; throws if the transaction could not be sent or
  * reverted on chain. A thrown error carries `.hash` when the transaction did
@@ -123,10 +124,12 @@ export async function sendRelayerTx(call) {
       // Estimation is an eth_call, so a write that would revert throws here
       // with the decoded contract error and nothing is sent.
       const gas = await client.estimateContractGas({ account, ...call });
-      return wallet.writeContract({ account, ...call, gas: (gas * GAS_MARGIN_NUM) / GAS_MARGIN_DEN });
+      return wallet.writeContract({ account, ...call, gas: (gas * GAS_MARGIN_NUM) / GAS_MARGIN_DEN, ...(await feeParams()) });
     }
     const gas = await client.estimateGas({ account, to: call.to, value: call.value });
-    return wallet.sendTransaction({ to: call.to, value: call.value, gas: (gas * GAS_MARGIN_NUM) / GAS_MARGIN_DEN });
+    return wallet.sendTransaction({
+      to: call.to, value: call.value, gas: (gas * GAS_MARGIN_NUM) / GAS_MARGIN_DEN, ...(await feeParams()),
+    });
   };
 
   /*

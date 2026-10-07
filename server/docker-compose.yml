@@ -44,11 +44,14 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       # The chain side; see .env.example. Without a relayer key onboarding
       # answers 503 and everything else still runs.
-      CHAIN_ID: ${CHAIN_ID:-10143}
-      RPC_URL: ${RPC_URL:-https://testnet-rpc.monad.xyz}
+      CHAIN_ID: ${CHAIN_ID:-5042002}
+      RPC_URL: ${RPC_URL:-https://rpc.testnet.arc.io}
       RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY:-}
-      AUSD_FAUCET: ${AUSD_FAUCET:-}
-      ONBOARD_MON_DRIP: ${ONBOARD_MON_DRIP:-0.05}
+      ORACLE_PRIVATE_KEY: ${ORACLE_PRIVATE_KEY:-}
+      ONBOARD_USDC_DRIP: ${ONBOARD_USDC_DRIP:-2}
+      META_KEEPER: ${META_KEEPER:-}
+      META_KEEPER_EVERY: ${META_KEEPER_EVERY:-6}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
       PYTH_API_KEY: ${PYTH_API_KEY:-}
       PYTH_HERMES_URL: ${PYTH_HERMES_URL:-https://pyth.dourolabs.app/hermes}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://mempire.fun}

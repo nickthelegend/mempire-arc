@@ -1,22 +1,23 @@
 /**
- * The meta keeper: posts the Pyth-derived market meta once per ten-minute window.
+ * The meta keeper: posts the oracle-derived market meta each ten-minute window.
  *
- * `MarketMeta.postFromPyth` is permissionless — anyone may pay the Pyth update
- * fee and have the contract derive every fighter's modifier from spot-vs-EMA in
- * that same transaction. Someone has to actually do it each window, though, and
- * that is this loop. It only ever submits fresh Pyth updates; the numbers are
- * computed on chain, so the keeper cannot choose them.
+ * `MarketMeta.postFromOracle` is permissionless — anyone may post fresh price
+ * updates and have the contract derive every fighter's modifier from
+ * spot-vs-EMA in that same transaction. Someone has to actually do it each
+ * window, though, and that is this loop. It only ever submits fresh signed
+ * updates; the numbers are computed on chain, so the keeper cannot choose them.
  *
- * On by default on the local chain (signed local oracle), opt-in elsewhere with
- * `META_KEEPER=1`. When a CRE workflow is the meta's writer, leave it off: the
- * two share one epoch clock and whichever posts first owns the window.
+ * On by default on Arc mainnet (Chainlink CRE does not serve it, so this is the
+ * meta's only writer) and on local forks; opt-in on Arc testnet with
+ * `META_KEEPER=1`, where the CRE workflow can write instead. The two share one
+ * epoch clock and whichever posts first owns the window.
  *
- * A post re-derives all 36 fighters and costs ~1.7M gas (~0.17 MON at 100
- * gwei), so every window would be ~25 MON a day. `META_KEEPER_EVERY=n` posts
- * every n-th window instead (36 = every six hours); a match snapshots whatever
+ * A post re-derives all 36 fighters, ~1.7M gas: about 0.04 USDC at Arc's
+ * ~25 gwei, so every window is ~6 USDC a day. `META_KEEPER_EVERY=n` posts every
+ * n-th window instead (6 = hourly, ~1 USDC a day); a match snapshots whatever
  * epoch was posted last, so the gaps are safe.
  */
-import { abis, deployment, IS_DEV_CHAIN, publicClient, roster } from './chain.js';
+import { abis, deployment, IS_DEV_CHAIN, IS_MAINNET, publicClient, roster } from './chain.js';
 import { fetchPythUpdate, pythConfigured } from './pyth.js';
 import { relayerAddress, sendRelayerTx } from './relayer.js';
 
@@ -33,7 +34,7 @@ export const keeperStatus = () => ({ enabled: enabled(), ...last });
 function enabled() {
   const flag = process.env.META_KEEPER;
   if (flag === '0') return false;
-  return (flag === '1' || IS_DEV_CHAIN) && Boolean(deployment?.marketMeta) && pythConfigured();
+  return (flag === '1' || IS_DEV_CHAIN || IS_MAINNET) && Boolean(deployment?.marketMeta) && pythConfigured();
 }
 
 /** Posts this window's meta if nobody has yet. Returns the tx hash or null. */
@@ -46,10 +47,10 @@ export async function tickKeeper(now = Math.floor(Date.now() / 1000)) {
   const ids = roster.map((c) => c.coinId);
   const { updateData, prices } = await fetchPythUpdate(ids);
   const coinIds = prices.map((p) => p.coinId);
-  const fee = await client.readContract({ address: deployment.pyth, abi: pythAbi, functionName: 'getUpdateFee', args: [updateData] });
+  const fee = await client.readContract({ address: deployment.oracle, abi: pythAbi, functionName: 'getUpdateFee', args: [updateData] });
   try {
     const { hash } = await sendRelayerTx({
-      address: deployment.marketMeta, abi: abis.marketMeta, functionName: 'postFromPyth', args: [coinIds, updateData], value: fee,
+      address: deployment.marketMeta, abi: abis.marketMeta, functionName: 'postFromOracle', args: [coinIds, updateData], value: fee,
     });
     last = { epoch: Number(want), hash, at: Date.now(), error: null };
     console.log(`keeper: posted meta epoch ${want} for ${coinIds.length} fighters (${hash.slice(0, 10)}…)`);
@@ -67,5 +68,5 @@ export function startKeeper() {
   const run = () => { void tickKeeper().catch((e) => { last = { ...last, error: String(e?.message ?? e) }; }); };
   setTimeout(run, 2_000);
   setInterval(run, 60_000);
-  console.log(`keeper: posting Pyth momentum meta every ${EVERY === 1n ? 'ten-minute window' : `${EVERY} windows (${Number(EVERY) * 10} min)`}`);
+  console.log(`keeper: posting oracle momentum meta every ${EVERY === 1n ? 'ten-minute window' : `${EVERY} windows (${Number(EVERY) * 10} min)`}`);
 }

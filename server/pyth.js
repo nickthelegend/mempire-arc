@@ -1,12 +1,14 @@
 /**
- * The Pyth price proxy.
+ * The price-update proxy (Pyth-compatible updates for the game's oracle).
  *
- * Minting a card posts a fresh Pyth update in the same transaction —
+ * Minting a card posts a fresh price update in the same transaction —
  * `MempireCards.mint` takes the signed update bytes and records the price the
  * card was minted at, and an asset with no live price cannot be minted at all.
- * Those bytes come from Hermes, and Hermes has required an API key since
- * 2026-08-26. A key in the browser bundle is a key anyone can lift and spend,
- * so the browser asks this route and the key stays here.
+ * The bytes come from one of two places, picked by the deployment's
+ * `oracleKind`: Pyth's Hermes (Pyth is deployed on Arc testnet; Hermes needs an
+ * API key, which stays here rather than in the browser bundle), or this relay's
+ * oracle key signing live quotes for the SignedPriceOracle (Arc mainnet, where
+ * Pyth isn't deployed, and the default everywhere).
  *
  * Responses are cached for about two seconds per set of feeds. A price update
  * is only useful while it is fresh (crypto feeds are registered with a 120 s
@@ -15,7 +17,7 @@
  */
 import { encodeAbiParameters, keccak256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CHAIN_ID, coinById, deployment, IS_DEV_CHAIN } from './chain.js';
+import { CHAIN_ID, coinById, deployment, sameAddress } from './chain.js';
 
 const HERMES = (process.env.PYTH_HERMES_URL || 'https://pyth.dourolabs.app/hermes').replace(/\/+$/, '');
 const KEY = process.env.PYTH_API_KEY || '';
@@ -27,27 +29,31 @@ const cache = new Map(); // sorted coin ids → { at, body } | { at, inflight }
 /*
  * Where signed price updates come from:
  *
- *  - `hermes`: Pyth's Hermes, with the server-held key. On Monad.
- *  - `local`: LOCAL CHAIN ONLY (31337). The game's contracts point at a
- *    LocalPriceOracle that accepts an update only if this relay's oracle key
- *    signed it — Pyth's model on a chain Pyth does not serve. The relay signs
- *    *only* a live market quote it just read (OKX, or CoinGecko), with that quote's own
- *    timestamp as the publish time, and its moving-average leg derived from the
- *    quote's real 24-hour change. No quote, no update: the caller gets an
- *    error, never a number nobody quoted.
+ *  - `hermes`: Pyth's Hermes, with the server-held key, for a deployment whose
+ *    oracle is Pyth itself (`oracleKind: "pyth"`, Arc testnet only).
+ *  - `signed`: the deployment's oracle is the game's SignedPriceOracle, which
+ *    accepts an update only if this relay's oracle key signed it. The relay
+ *    signs *only* a live market quote it just read (OKX, or CoinGecko), with
+ *    that quote's own timestamp as the publish time, and its moving-average leg
+ *    derived from the quote's real 24-hour change. No quote, no update: the
+ *    caller gets an error, never a number nobody quoted. The signature is bound
+ *    to the oracle contract and chain id.
  *  - `off`: neither configured. Mints answer "no price source configured".
  */
 const ORACLE_KEY = process.env.ORACLE_PRIVATE_KEY || '';
+const KIND = deployment?.oracleKind ?? (deployment?.oracle ? 'signed' : null);
 const MODE = (() => {
-  if (KEY) return 'hermes';
-  if (ORACLE_KEY && IS_DEV_CHAIN) return 'local';
-  if (ORACLE_KEY) console.warn('pyth: ORACLE_PRIVATE_KEY is only honoured on a local dev chain (31337/31338)');
+  if (KIND === 'pyth') return KEY ? 'hermes' : 'off';
+  if (KIND === 'signed' && ORACLE_KEY) return 'signed';
   return 'off';
 })();
 export const pythMode = () => MODE;
 
 let oracleAccount = null;
-const oracle = () => (oracleAccount ??= privateKeyToAccount(ORACLE_KEY));
+const oracle = () => (oracleAccount ??= privateKeyToAccount(ORACLE_KEY.startsWith('0x') ? ORACLE_KEY : `0x${ORACLE_KEY}`));
+if (MODE === 'signed' && deployment?.oracleSigner && !sameAddress(oracle().address, deployment.oracleSigner)) {
+  console.warn(`oracle: ORACLE_PRIVATE_KEY is ${oracle().address}, but the deployed oracle trusts ${deployment.oracleSigner} — every update will be refused`);
+}
 
 /** Live quotes the market feed read: coinId → { priceUsd, change24h, at }. */
 const live = new Map();
@@ -58,6 +64,8 @@ export function noteLivePrices(rows) {
 }
 
 export const pythConfigured = () => MODE !== 'off';
+const offReason = () => (KIND === 'pyth' ? 'PYTH_API_KEY not configured (Pyth Hermes)'
+  : KIND === 'signed' ? 'ORACLE_PRIVATE_KEY not configured (signed price oracle)' : 'no price oracle deployed on this chain');
 
 const EXPO = -8;
 /** A quote older than this is not "live" enough to sign for a 120 s feed. */
@@ -84,7 +92,7 @@ async function localUpdate(coins) {
     const publishTime = BigInt(at);
     const digest = keccak256(encodeAbiParameters(
       [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes32' }, { type: 'int64' }, { type: 'int32' }, { type: 'int64' }, { type: 'uint64' }],
-      [deployment.pyth, BigInt(CHAIN_ID), c.feedId, price, EXPO, ema, publishTime],
+      [deployment.oracle, BigInt(CHAIN_ID), c.feedId, price, EXPO, ema, publishTime],
     ));
     const signature = await oracle().signMessage({ message: { raw: digest } });
     updateData.push(encodeAbiParameters(
@@ -93,7 +101,7 @@ async function localUpdate(coins) {
     ));
     prices.push({ coinId: c.coinId, price: String(price), expo: EXPO, publishTime: at, ema: String(ema), source: q.source });
   }
-  return { mode: 'local', updateData, prices, missing };
+  return { mode: 'signed', updateData, prices, missing };
 }
 
 /** Strips the 0x Hermes omits, so feed ids compare in one spelling. */
@@ -107,9 +115,9 @@ const bare = (feedId) => feedId.toLowerCase().replace(/^0x/, '');
  * 10^expo is the USD value, and a JS number cannot carry every int64 exactly.
  */
 export async function fetchPythUpdate(coinIds) {
-  if (MODE === 'off') throw Object.assign(new Error('pyth api key not configured'), { status: 503 });
+  if (MODE === 'off') throw Object.assign(new Error(offReason()), { status: 503 });
   const ids = [...new Set(coinIds)].sort((a, b) => a - b);
-  if (MODE === 'local') {
+  if (MODE === 'signed') {
     const out = await localUpdate(ids.map((id) => coinById.get(id)).filter(Boolean));
     if (!out.updateData.length) {
       throw Object.assign(new Error(`no live price right now for ${out.missing.join(', ')}`), { status: 503 });
@@ -176,7 +184,7 @@ export function parseCoinIds(raw) {
 export function registerPythRoutes(app, gate) {
   const pass = (_req, _res, next) => next();
   app.get('/api/pyth/update', gate ?? pass, async (req, res) => {
-    if (MODE === 'off') return res.status(503).json({ error: 'pyth api key not configured' });
+    if (MODE === 'off') return res.status(503).json({ error: offReason() });
     const ids = parseCoinIds(req.query.coinIds);
     if (typeof ids === 'string') return res.status(400).json({ error: ids });
     try {

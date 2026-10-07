@@ -8,9 +8,10 @@
  *    covers 20 of the 24), topped up from CoinGecko's keyless `simple/price`
  *    for the rest when it answers. Cached for sixty seconds. A failed refresh
  *    serves the last good answer rather than nothing.
- *  - **Stocks** from Pyth through `pyth.js`, when a Pyth key is configured.
- *    Without one they are simply absent, and so is any 24-hour change Pyth
- *    does not publish.
+ *  - **Tokenised stocks** from OKX's xStock spot markets (`XNVDA-USDT`, …:
+ *    the tokenised share itself, trading around the clock), keyless. When the
+ *    deployment's oracle is Pyth and a Hermes key is set, Pyth's equity feeds
+ *    are preferred.
  *
  * Nothing here is ever estimated. A coin with no price from either source is
  * left out of the list rather than shown at a number nobody quoted.
@@ -69,7 +70,7 @@ async function fromCoinGecko() {
 
 const OKX = 'https://www.okx.com/api/v5/market/tickers?instType=SPOT';
 
-/** Every crypto/meme fighter OKX quotes against USDT, with the 24h move from open24h. */
+/** Every fighter OKX quotes against USDT (stocks as their tokenised xStock), with the 24h move from open24h. */
 async function fromOkx() {
   const res = await fetch(OKX, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
   if (!res.ok) throw new Error(`okx answered ${res.status}`);
@@ -78,8 +79,8 @@ async function fromOkx() {
   const byInst = new Map(body.data.map((t) => [t.instId, t]));
   const out = [];
   for (const c of roster) {
-    if (c.kind === 'stock') continue;
-    const t = byInst.get(`${c.ticker}-USDT`) ?? byInst.get(`${c.ticker}-USD`);
+    const base = c.kind === 'stock' ? `X${c.ticker}` : c.ticker;
+    const t = byInst.get(`${base}-USDT`) ?? byInst.get(`${base}-USDC`) ?? byInst.get(`${base}-USD`);
     const last = Number(t?.last);
     const open = Number(t?.open24h);
     if (!(last > 0)) continue;
@@ -89,6 +90,7 @@ async function fromOkx() {
       priceUsd: last,
       change24h: open > 0 ? ((last - open) / open) * 100 : null,
       source: 'okx',
+      instrument: t.instId,
       at: Math.floor(Number(t.ts) / 1000) || Math.floor(Date.now() / 1000),
     });
   }
@@ -134,8 +136,10 @@ async function refresh() {
   const pythOk = py.status === 'fulfilled' && py.value !== null;
   const crypto = cg.status === 'fulfilled' ? cg.value : keep((r) => r?.kind !== 'stock');
   if (cg.status === 'fulfilled') noteLivePrices(cg.value);
-  const stocks = pythOk ? py.value : (py.status === 'fulfilled' ? [] : keep((r) => r?.kind === 'stock'));
-  const coins = [...crypto, ...stocks].sort((a, b) => a.coinId - b.coinId);
+  const stocks = pythOk ? py.value : (py.status === 'fulfilled' ? [] : keep((r) => r?.kind === 'stock' && prior.get(r.coinId)?.source === 'pyth'));
+  // Pyth's equity rows win over OKX's xStock rows for the same fighter.
+  const byId = new Map([...crypto, ...stocks].map((r) => [r.coinId, r]));
+  const coins = [...byId.values()].sort((a, b) => a.coinId - b.coinId);
   // Only a source that actually answered makes the list "fresh".
   if (cg.status === 'fulfilled' || pythOk) good = { at: Date.now(), coins };
   else if (cg.status === 'rejected') console.warn(`coins: refresh failed — ${String(cg.reason?.message ?? cg.reason).slice(0, 80)}`);
