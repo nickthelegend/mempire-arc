@@ -1,13 +1,15 @@
-# Mempire on Monad — HyperIndex schema.
+# Mempire on Arc — HyperIndex schema.
 #
 # Addresses are stored lowercase (config.yaml sets address_format: lowercase),
 # so the app can query with `address.toLowerCase()`.
-# Money is BigInt in base units: MON in wei (18 dp), AUSD in micro-dollars (6 dp),
-# $MEMPIRE in wei (18 dp). Timestamps are unix seconds (Int).
+# Money is BigInt in base units: USDC in micro-dollars (6 dp, the ERC-20
+# interface at 0x3600…0000), $MEMPIRE in wei (18 dp). Timestamps are unix
+# seconds (Int).
 
+# Arena stakes are USDC only. MatchCreated / MatchSettled / PayoutHeld still
+# carry the token address; the enum keeps the field typed for the app.
 enum Currency {
-  MON
-  AUSD
+  USDC
 }
 
 enum CoinKind {
@@ -54,10 +56,11 @@ enum SeatResult {
 }
 
 # Who wrote an epoch's meta (MarketMeta.MetaSource): 0 = a Chainlink CRE report
-# through the KeystoneForwarder, 1 = postFromPyth (Pyth spot vs EMA momentum).
+# through the KeystoneForwarder (Arc testnet), 1 = postFromOracle (signed-oracle
+# spot vs EMA momentum; the only source on Arc mainnet, where CRE does not run).
 enum MetaSourceKind {
   ChainlinkCRE
-  PythMomentum
+  OracleMomentum
 }
 
 enum ChestTier {
@@ -92,15 +95,13 @@ type Player {
   winsByTimeout: Int!
   plays: Int!
 
-  # Net result of decided matches (payout received − stake put up). Voided and
-  # cancelled matches refund both stakes, so they never touch these.
-  netMon: BigInt! @index
-  netAusd: BigInt! @index
-  wageredMon: BigInt!
-  wageredAusd: BigInt!
-  # Payouts the arena could not push and is holding for the player to pull.
-  heldMon: BigInt!
-  heldAusd: BigInt!
+  # Net USDC result of decided matches (payout received − stake put up), 6 dp.
+  # Voided and cancelled matches refund both stakes, so they never touch these.
+  netUsdc: BigInt! @index
+  wageredUsdc: BigInt!
+  # USDC payouts the arena could not push (e.g. a blocklisted recipient) and is
+  # holding for the player to pull with withdraw().
+  heldUsdc: BigInt!
 
   # Collection.
   cardsOwned: Int!
@@ -177,7 +178,7 @@ type Card {
   level: Int! @index
   archetype: Int!
   source: CardSource!
-  mintPrice: BigInt! # Pyth price at mint (0 for starter and chest cards)
+  mintPrice: BigInt! # oracle price at mint (0 for starter and chest cards)
   mintExpo: Int!
   mintedAt: Int!
   mintTxHash: String!
@@ -295,7 +296,7 @@ type MatchSeat @index(fields: ["player", ["createdAt", "DESC"]]) {
 }
 
 # Every card drop, written on chain by the seat's session key while the match
-# runs. Powers the "live on Monad" feed.
+# runs. Powers the "live on Arc" feed.
 type Play {
   id: ID! # txHash-logIndex
   match: Match!
@@ -391,8 +392,8 @@ type MarketEpoch {
   # From MetaSource, emitted right after MetaPosted in the same transaction.
   # Unset only if a MetaPosted is ever seen without one.
   source: MetaSourceKind
-  sourceCode: Int # raw uint8: 0 = Chainlink CRE, 1 = Pyth momentum
-  poster: String # CRE: the forwarder; Pyth: whoever paid the update fee
+  sourceCode: Int # raw uint8: 0 = Chainlink CRE, 1 = oracle momentum
+  poster: String # CRE: the forwarder; oracle: whoever called postFromOracle
   modifiers: [CoinModifier!]! @derivedFrom(field: "epoch")
 }
 
@@ -415,10 +416,8 @@ type DailyStats {
   matchesVoided: Int!
   matchesCancelled: Int!
   ties: Int!
-  volumeMon: BigInt! # settled pots
-  volumeAusd: BigInt!
-  rakeMon: BigInt!
-  rakeAusd: BigInt!
+  volumeUsdc: BigInt! # settled pots, USDC 6 dp
+  rakeUsdc: BigInt!
   plays: Int!
   checkpoints: Int!
   cardsMinted: Int!
@@ -448,9 +447,33 @@ type Totals {
   cardsBurned: Int!
   merges: Int!
   chestsOpened: Int!
-  volumeMon: BigInt!
-  volumeAusd: BigInt!
-  rakeMon: BigInt!
-  rakeAusd: BigInt!
+  volumeUsdc: BigInt! # settled pots, USDC 6 dp
+  rakeUsdc: BigInt!
   currentEpoch: BigInt!
+}
+
+# ───────────────────────────────────────────────────────────── admin
+
+# Arena limits (MempireArena.LimitsChanged): the highest open stake tier and the
+# pause switch. A single row, id "arena". The constructor sets the first limits
+# without an event, so this row appears with the first setLimits() call; until
+# then read maxTier() / paused() from the contract.
+type ArenaLimits {
+  id: ID! # "arena"
+  maxTier: Int!
+  paused: Boolean!
+  changes: Int!
+  updatedAt: Int!
+  txHash: String!
+}
+
+# A price-oracle (re)wiring: MempireCards.OracleChanged or MarketMeta.OracleChanged.
+type OracleChange {
+  id: ID! # txHash-logIndex
+  contract: String! # "MempireCards" | "MarketMeta"
+  oracle: String!
+  cards: String # MarketMeta only: the cards contract it reads coins from
+  timestamp: Int! @index
+  blockNumber: Int!
+  txHash: String!
 }

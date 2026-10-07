@@ -1,14 +1,15 @@
 // MarketMeta: one bounded (±15%) modifier per fighter each epoch, written by a
-// Chainlink CRE report (onReport) or derived from Pyth momentum (postFromPyth).
+// Chainlink CRE report (onReport, Arc testnet) or derived from signed-oracle
+// momentum (postFromOracle — the only writer on Arc mainnet, where CRE does not run).
 // A coin left out of an epoch's report reads 0 on chain for that epoch, so
 // every known coin's current modifier is rewritten, not just the ones in the
 // report. MetaSource follows MetaPosted in the same transaction and records
 // which of the two wrote the epoch.
 import { indexer, type MarketEpoch } from "envio";
-import { addr, meta, totals, updateCoin } from "../lib/common.js";
+import { addr, logId, meta, totals, updateCoin } from "../lib/common.js";
 
-/** MarketMeta.SOURCE_CRE = 0, SOURCE_PYTH = 1. */
-export const META_SOURCES = ["ChainlinkCRE", "PythMomentum"] as const;
+/** MarketMeta.SOURCE_CRE = 0, SOURCE_ORACLE = 1. */
+export const META_SOURCES = ["ChainlinkCRE", "OracleMomentum"] as const;
 
 indexer.onEvent({ contract: "MarketMeta", event: "MetaPosted" }, async ({ event, context }) => {
   const m = meta(event);
@@ -98,4 +99,17 @@ indexer.onEvent({ contract: "MarketMeta", event: "MetaSource" }, async ({ event,
     poster: undefined,
   };
   context.MarketEpoch.set({ ...base, ...sourceFields });
+});
+
+indexer.onEvent({ contract: "MarketMeta", event: "OracleChanged" }, async ({ event, context }) => {
+  const m = meta(event);
+  context.OracleChange.set({
+    id: logId(m),
+    contract: "MarketMeta",
+    oracle: addr(event.params.oracle),
+    cards: addr(event.params.cards),
+    timestamp: m.ts,
+    blockNumber: m.block,
+    txHash: m.tx,
+  });
 });

@@ -5,17 +5,25 @@
 # Each target defines cre-cli, account, and rpcs groups.
 #
 # RPC URLs support ${VAR_NAME} syntax to reference environment variables.
-# Monad testnet (chain id 10143) is in the official chain-selectors registry
-# as `monad-testnet`; the simulator's MockKeystoneForwarder there is
-# 0xB9F79d863261869B234c481D1f9A7af84AeAd192.
+# Arc testnet (chain id 5042002) is in the official chain-selectors registry
+# as `arc-testnet` (selector 3034092155422581607). Its forwarders
+# (docs.chain.link/cre, forwarder directory):
+#   simulation (MockKeystoneForwarder, `cre workflow simulate --broadcast`):
+#     0x6E9EE680ef59ef64Aa8C7371279c27E496b5eDc1
+#   production (KeystoneForwarder, a deployed workflow):
+#     0x76c9cf548b4179F8901cda1f8623568b58215E62
+# MarketMeta.forwarder must be the one matching how the report is delivered.
+#
+# Arc MAINNET (5042, `arc-mainnet`) is not served by CRE: there MarketMeta's
+# meta comes from MarketMeta.postFromOracle (signed-oracle momentum) instead.
 
 # ==========================================================================
 staging-settings:
   rpcs:
-    - chain-name: monad-testnet
-      url: https://testnet-rpc.monad.xyz
+    - chain-name: arc-testnet
+      url: https://rpc.testnet.arc.io
 # ==========================================================================
 production-settings:
   rpcs:
-    - chain-name: monad-testnet
-      url: https://testnet-rpc.monad.xyz
+    - chain-name: arc-testnet
+      url: https://rpc.testnet.arc.io

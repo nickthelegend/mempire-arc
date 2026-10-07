@@ -14,7 +14,7 @@ export type RosterCoin = {
 	readonly feedId: string
 }
 
-export const ROSTER_CHAIN_ID = 10143
+export const ROSTER_CHAIN_ID = 5042002
 
 export const ROSTER: readonly RosterCoin[] = [
 	{ coinId: 0, ticker: "BTC", kind: "crypto", coingeckoId: "bitcoin", feedId: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43" },

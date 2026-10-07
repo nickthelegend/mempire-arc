@@ -6,7 +6,7 @@
 # Settings here override CRE Project Settings File values.
 
 # ==========================================================================
-# Demo / simulation: 10-minute cron, 10-minute epochs, monad-testnet.
+# Demo / simulation: 10-minute cron, 10-minute epochs, arc-testnet.
 staging-settings:
   user-workflow:
     workflow-name: "mempire-market-meta-staging"
@@ -16,7 +16,7 @@ staging-settings:
     secrets-path: "../secrets.yaml"
 
 # ==========================================================================
-# Deployed: hourly cron, hourly epochs.
+# Deployed: hourly cron, hourly epochs, arc-testnet (CRE does not serve Arc mainnet).
 production-settings:
   user-workflow:
     workflow-name: "mempire-market-meta"

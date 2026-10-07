@@ -40,9 +40,18 @@ export const logId = (m: Meta): string => `${m.tx}-${m.logIndex}`;
 export const isZero = (a: string): boolean => addr(a) === ZERO_ADDRESS;
 export const maxInt = (a: number, b: number): number => (a > b ? a : b);
 
-export type CurrencyName = "MON" | "AUSD";
-/** The arena only accepts native MON (address 0) or AUSD as a stake currency. */
-export const currencyOf = (currency: string): CurrencyName => (isZero(currency) ? "MON" : "AUSD");
+/** Arc's USDC ERC-20 interface (6 decimals) — the arena's only stake currency. */
+export const USDC_ADDRESS = "0x3600000000000000000000000000000000000000";
+export type CurrencyName = "USDC";
+/**
+ * MatchCreated / MatchSettled / PayoutHeld still carry the stake token's
+ * address; on Arc it is always USDC. Anything else is logged and still
+ * counted as USDC — the contract cannot escrow another token.
+ */
+export function currencyOf(ctx: Ctx, currency: string): CurrencyName {
+  if (addr(currency) !== USDC_ADDRESS) ctx.log.warn(`unexpected stake currency ${currency}; counting it as USDC`);
+  return "USDC";
+}
 
 export function dayKey(ts: number): { id: string; dayStart: number } {
   const dayStart = Math.floor(ts / 86_400) * 86_400;
@@ -102,10 +111,8 @@ const newTotals = (): Totals => ({
   cardsBurned: 0,
   merges: 0,
   chestsOpened: 0,
-  volumeMon: 0n,
-  volumeAusd: 0n,
-  rakeMon: 0n,
-  rakeAusd: 0n,
+  volumeUsdc: 0n,
+  rakeUsdc: 0n,
   currentEpoch: 0n,
 });
 
@@ -126,10 +133,8 @@ export function daily(ctx: Ctx, ts: number, fn: (d: DailyStats) => DailyStats) {
       matchesVoided: 0,
       matchesCancelled: 0,
       ties: 0,
-      volumeMon: 0n,
-      volumeAusd: 0n,
-      rakeMon: 0n,
-      rakeAusd: 0n,
+      volumeUsdc: 0n,
+      rakeUsdc: 0n,
       plays: 0,
       checkpoints: 0,
       cardsMinted: 0,
@@ -160,12 +165,9 @@ function newPlayer(id: string, ts: number): Player {
     voids: 0,
     winsByTimeout: 0,
     plays: 0,
-    netMon: 0n,
-    netAusd: 0n,
-    wageredMon: 0n,
-    wageredAusd: 0n,
-    heldMon: 0n,
-    heldAusd: 0n,
+    netUsdc: 0n,
+    wageredUsdc: 0n,
+    heldUsdc: 0n,
     cardsOwned: 0,
     cardsMinted: 0,
     highestLevel: 0,

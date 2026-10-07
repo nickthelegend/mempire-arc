@@ -52,6 +52,19 @@ indexer.onEvent({ contract: "MempireCards", event: "CoinActive" }, async ({ even
   await updateCoin(context, Number(event.params.coinId), (c) => ({ ...c, active: event.params.active }));
 });
 
+indexer.onEvent({ contract: "MempireCards", event: "OracleChanged" }, async ({ event, context }) => {
+  const m = meta(event);
+  context.OracleChange.set({
+    id: logId(m),
+    contract: "MempireCards",
+    oracle: addr(event.params.oracle),
+    cards: undefined,
+    timestamp: m.ts,
+    blockNumber: m.block,
+    txHash: m.tx,
+  });
+});
+
 // ───────────────────────────────────────────────────────────── cards
 
 indexer.onEvent({ contract: "MempireCards", event: "CardMinted" }, async ({ event, context }) => {

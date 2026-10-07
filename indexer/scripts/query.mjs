@@ -7,36 +7,35 @@
 //   node scripts/query.mjs <endpoint> playerHistory --player 0xabc...
 //
 // Endpoint defaults to $ENVIO_GRAPHQL_URL, then http://localhost:8090/v1/graphql
-// (the local anvil stack from scripts/local-indexer.sh; plain `envio dev`
-// against testnet serves :8080). Every query works on the public role, no
+// (the local arc-anvil stack from scripts/local-indexer.sh; plain `envio dev`
+// against Arc testnet serves :8080). Every query works on the public role, no
 // secret needed; set HASURA_ADMIN_SECRET to send one ("testing" locally).
-// Addresses are stored lowercase.
+// Addresses are stored lowercase. Money is USDC in base units (6 decimals).
 import { fileURLToPath } from "node:url";
 
 export const QUERIES = {
   leaderboardByWins: /* GraphQL */ `
     query LeaderboardByWins($limit: Int = 20) {
-      Player(where: { matches: { _gt: 0 } }, order_by: [{ wins: desc }, { netMon: desc }], limit: $limit) {
+      Player(where: { matches: { _gt: 0 } }, order_by: [{ wins: desc }, { netUsdc: desc }], limit: $limit) {
         id
         wins
         losses
         ties
         voids
         matches
-        netMon
-        netAusd
+        netUsdc
         highestLevel
         cardsOwned
         lastActive
       }
     }`,
 
-  leaderboardByNetMon: /* GraphQL */ `
-    query LeaderboardByNetMon($limit: Int = 20) {
-      Player(where: { matches: { _gt: 0 } }, order_by: [{ netMon: desc }, { wins: desc }], limit: $limit) {
+  leaderboardByNetUsdc: /* GraphQL */ `
+    query LeaderboardByNetUsdc($limit: Int = 20) {
+      Player(where: { matches: { _gt: 0 } }, order_by: [{ netUsdc: desc }, { wins: desc }], limit: $limit) {
         id
-        netMon
-        wageredMon
+        netUsdc
+        wageredUsdc
         wins
         losses
         ties
@@ -53,8 +52,9 @@ export const QUERIES = {
         losses
         ties
         voids
-        netMon
-        netAusd
+        netUsdc
+        wageredUsdc
+        heldUsdc
         cardsOwned
         highestLevel
         chestsOpened
@@ -175,8 +175,8 @@ export const QUERIES = {
         cardsMinted
         merges
         chestsOpened
-        volumeMon
-        volumeAusd
+        volumeUsdc
+        rakeUsdc
         currentEpoch
       }
       DailyStats(order_by: { dayStart: desc }, limit: $days) {
@@ -184,13 +184,30 @@ export const QUERIES = {
         matchesStarted
         matchesSettled
         matchesVoided
-        volumeMon
-        volumeAusd
+        volumeUsdc
+        rakeUsdc
         plays
         cardsMinted
         merges
         uniquePlayers
         newPlayers
+      }
+    }`,
+
+  arenaLimits: /* GraphQL */ `
+    query ArenaLimits {
+      ArenaLimits(limit: 1) {
+        maxTier
+        paused
+        changes
+        updatedAt
+      }
+      OracleChange(order_by: { timestamp: desc }, limit: 5) {
+        contract
+        oracle
+        cards
+        timestamp
+        txHash
       }
     }`,
 };

@@ -3,7 +3,8 @@
  *
  * Every epoch this workflow reads the 24h price change of every fighter in
  * the roster, agrees on it across the DON, turns each change into a bounded
- * strength modifier and writes ONE report to MarketMeta on Monad:
+ * strength modifier and writes ONE report to MarketMeta on Arc testnet
+ * (CRE chain `arc-testnet`, chain id 5042002):
  *
  *   abi.encode(uint64 epoch, uint16[] coinIds, int16[] bps)
  *
@@ -12,6 +13,10 @@
  * whole match is played with the same numbers on both sides.
  *
  * The math, the clock and the encoding live in ./meta.ts (unit tested).
+ *
+ * Arc mainnet is not a CRE chain. There, MarketMeta's meta is written by
+ * `MarketMeta.postFromOracle` (signed-oracle spot-vs-EMA momentum, posted by
+ * the relay's keeper), so this workflow refuses `arc-mainnet` at config time.
  */
 import {
 	bytesToHex,
@@ -54,13 +59,25 @@ import { ROSTER, type RosterCoin } from './roster'
 // Config
 // ---------------------------------------------------------------------------
 
+/**
+ * Chains a config may name but CRE cannot write to. Arc mainnet has a chain
+ * selector (`arc-mainnet`) yet no CRE capability DON, so a workflow pointed at
+ * it would never run; say so up front instead.
+ */
+export const UNSUPPORTED_CHAINS: Readonly<Record<string, string>> = {
+	'arc-mainnet':
+		'CRE does not serve Arc mainnet: there MarketMeta is written by postFromOracle (signed-oracle momentum), not by this workflow',
+}
+
 export const configSchema = z.object({
 	/** 6-field cron (seconds first). Demo: every 10 minutes. */
 	schedule: z.string(),
 	/** Epoch length in seconds; epoch = floor(unixSeconds / epochSeconds). */
 	epochSeconds: z.number().int().positive(),
-	/** CRE chain selector name of the target chain. */
-	chainSelectorName: z.string(),
+	/** CRE chain selector name of the target chain: `arc-testnet`. */
+	chainSelectorName: z
+		.string()
+		.refine((name) => !UNSUPPORTED_CHAINS[name], (name) => ({ message: UNSUPPORTED_CHAINS[name] })),
 	/** MarketMeta on that chain. The zero address means "compute and log, don't write". */
 	marketMetaAddress: z.string(),
 	/** Gas limit for the forwarder → MarketMeta.onReport transaction (decimal string). */
@@ -235,7 +252,7 @@ export const runMarketMeta = (runtime: Runtime<Config>, source: string): string 
 
 	// 4. Write — unless MarketMeta isn't deployed/configured yet.
 	if (!isAddress(cfg.marketMetaAddress) || cfg.marketMetaAddress === zeroAddress) {
-		runtime.log('marketMetaAddress not set: report computed but not written (set it from shared/deployments/10143.json)')
+		runtime.log('marketMetaAddress not set: report computed but not written (set it from shared/deployments/5042002.json)')
 		return summary('dry-run', { report: encoded })
 	}
 	const marketMeta = cfg.marketMetaAddress as Address

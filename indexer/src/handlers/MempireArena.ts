@@ -1,6 +1,7 @@
-// MempireArena: escrowed 1v1 matches, the on-chain play log, two-claim settlement.
+// MempireArena: escrowed 1v1 USDC matches, the on-chain play log, two-claim
+// settlement, and the arena's admin limits.
 //
-// Money rules mirrored from the contract:
+// Money rules mirrored from the contract (all amounts USDC, 6 dp):
 //   - decided match: winner is paid pot − rake; loser gets nothing
 //   - tie: each seat gets (pot − rake) / 2
 //   - void (disputed claims, or no claims by the deadline) and cancel: both
@@ -21,7 +22,6 @@ import {
   updatePlayer,
   winRateBps,
   type Ctx,
-  type CurrencyName,
   type Meta,
 } from "../lib/common.js";
 
@@ -68,10 +68,8 @@ function newSeat(
   };
 }
 
-function addNet(p: Player, currency: CurrencyName, net: bigint, wagered: bigint): Player {
-  return currency === "MON"
-    ? { ...p, netMon: p.netMon + net, wageredMon: p.wageredMon + wagered }
-    : { ...p, netAusd: p.netAusd + net, wageredAusd: p.wageredAusd + wagered };
+function addNet(p: Player, net: bigint, wagered: bigint): Player {
+  return { ...p, netUsdc: p.netUsdc + net, wageredUsdc: p.wageredUsdc + wagered };
 }
 
 // ───────────────────────────────────────────────────────────── lifecycle
@@ -89,7 +87,7 @@ indexer.onEvent({ contract: "MempireArena", event: "MatchCreated" }, async ({ ev
     matchId: p.matchId,
     state: "Open",
     tier: Number(p.tier),
-    currency: currencyOf(p.currency),
+    currency: currencyOf(context, p.currency),
     currencyAddress: addr(p.currency),
     stake: p.stake,
     player0_id: player,
@@ -349,7 +347,7 @@ indexer.onEvent({ contract: "MempireArena", event: "MatchSettled" }, async ({ ev
     return;
   }
   const winner = Number(p.winner);
-  const currency = currencyOf(p.currency);
+  currencyOf(context, p.currency); // USDC on Arc; warns on anything else
   const { pot, rake, byTimeout } = p;
   const stake = match.stake;
   const isTie = winner === TIE;
@@ -384,7 +382,7 @@ indexer.onEvent({ contract: "MempireArena", event: "MatchSettled" }, async ({ ev
   context.MatchSeat.set({ ...s1, result: result1, payout: payout1, net: payout1 - stake, endedAt: m.ts });
 
   const credit = (result: Result, payout: bigint) => (x: Player): Player => {
-    const withNet = addNet(x, currency, payout - stake, stake);
+    const withNet = addNet(x, payout - stake, stake);
     return {
       ...withNet,
       wins: withNet.wins + (result === "Win" ? 1 : 0),
@@ -404,18 +402,14 @@ indexer.onEvent({ contract: "MempireArena", event: "MatchSettled" }, async ({ ev
     ...d,
     matchesSettled: d.matchesSettled + 1,
     ties: d.ties + (isTie ? 1 : 0),
-    volumeMon: d.volumeMon + (currency === "MON" ? pot : 0n),
-    volumeAusd: d.volumeAusd + (currency === "AUSD" ? pot : 0n),
-    rakeMon: d.rakeMon + (currency === "MON" ? rake : 0n),
-    rakeAusd: d.rakeAusd + (currency === "AUSD" ? rake : 0n),
+    volumeUsdc: d.volumeUsdc + pot,
+    rakeUsdc: d.rakeUsdc + rake,
   }));
   await totals(context, (g) => ({
     ...g,
     matchesSettled: g.matchesSettled + 1,
-    volumeMon: g.volumeMon + (currency === "MON" ? pot : 0n),
-    volumeAusd: g.volumeAusd + (currency === "AUSD" ? pot : 0n),
-    rakeMon: g.rakeMon + (currency === "MON" ? rake : 0n),
-    rakeAusd: g.rakeAusd + (currency === "AUSD" ? rake : 0n),
+    volumeUsdc: g.volumeUsdc + pot,
+    rakeUsdc: g.rakeUsdc + rake,
   }));
 });
 
@@ -478,11 +472,24 @@ indexer.onEvent({ contract: "MempireArena", event: "WinRewarded" }, async ({ eve
 indexer.onEvent({ contract: "MempireArena", event: "PayoutHeld" }, async ({ event, context }) => {
   const m = meta(event);
   const player = addr(event.params.player);
-  const currency = currencyOf(event.params.currency);
+  const currency = currencyOf(context, event.params.currency);
   const amount = event.params.amount;
   context.HeldPayout.set({ id: logId(m), player, currency, amount, timestamp: m.ts, txHash: m.tx });
   // Only players have a row; a refused rake to the treasury is logged but not credited.
-  await patch(context.Player, player, (x) =>
-    currency === "MON" ? { ...x, heldMon: x.heldMon + amount } : { ...x, heldAusd: x.heldAusd + amount },
-  );
+  await patch(context.Player, player, (x) => ({ ...x, heldUsdc: x.heldUsdc + amount }));
+});
+
+// ───────────────────────────────────────────────────────────── admin
+
+indexer.onEvent({ contract: "MempireArena", event: "LimitsChanged" }, async ({ event, context }) => {
+  const m = meta(event);
+  const prior = await context.ArenaLimits.get("arena");
+  context.ArenaLimits.set({
+    id: "arena",
+    maxTier: Number(event.params.maxTier),
+    paused: event.params.paused,
+    changes: (prior?.changes ?? 0) + 1,
+    updatedAt: m.ts,
+    txHash: m.tx,
+  });
 });

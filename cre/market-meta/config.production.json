@@ -1,9 +1,9 @@
 {
   "schedule": "0 0 * * * *",
   "epochSeconds": 3600,
-  "chainSelectorName": "monad-testnet",
+  "chainSelectorName": "arc-testnet",
   "marketMetaAddress": "0x0000000000000000000000000000000000000000",
-  "_todo_marketMetaAddress": "TODO(lead): set marketMetaAddress to the MarketMeta whose forwarder is the production KeystoneForwarder 0xF8344CFd5c43616a4366C34E3EEE75af79a74482.",
+  "_todo_marketMetaAddress": "TODO(lead): set marketMetaAddress to an Arc-testnet MarketMeta whose forwarder is the production KeystoneForwarder 0x76c9cf548b4179F8901cda1f8623568b58215E62. CRE does not serve Arc mainnet; there postFromOracle writes the meta.",
   "gasLimit": "1500000",
   "coingeckoBaseUrl": "https://api.coingecko.com/api/v3/simple/price",
   "pythHermesUrl": "https://pyth.dourolabs.app/hermes",

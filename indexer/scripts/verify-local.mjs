@@ -1,31 +1,36 @@
 #!/usr/bin/env node
-// End-to-end check: what scripts/seed-local.mjs did on anvil must be what the
-// local indexer serves over GraphQL. Exits 1 on any mismatch.
+// End-to-end check: what scripts/seed-local.mjs did on the arc-anvil fork must
+// be what the local indexer serves over GraphQL. Exits 1 on any mismatch.
 //
 //   node scripts/verify-local.mjs [graphql-url]      # default http://localhost:8090/v1/graphql
 //
 // Three kinds of checks:
 //   - exact: the seeded rows (players, both matches, every play, chest, merge)
 //     against .local/seed-manifest.json
-//   - chain: values read back from anvil (epoch sources, card counts)
+//   - chain: values read back from the fork (epoch sources, card counts)
 //   - consistency: aggregates (Coin, DailyStats, Totals, MarketEpoch.matches)
 //     recomputed from the indexed rows themselves, since other sessions on the
-//     same anvil may have played too
+//     same fork may have played too
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPublicClient, http, parseAbiItem } from "viem";
-import { foundry } from "viem/chains";
 import { LOCAL_ENDPOINT, QUERIES, gql, run } from "./query.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const indexerDir = join(here, "..");
 const ENDPOINT = process.argv.slice(2).find((a) => a.startsWith("http")) ?? process.env.ENVIO_GRAPHQL_URL ?? LOCAL_ENDPOINT;
-const RPC = process.env.MEMPIRE_RPC ?? "http://127.0.0.1:8612";
+const RPC = process.env.MEMPIRE_RPC ?? "http://127.0.0.1:8710";
 
 const m = JSON.parse(readFileSync(join(indexerDir, ".local/seed-manifest.json"), "utf8"));
 const abi = (name) => JSON.parse(readFileSync(join(indexerDir, "abis", `${name}.json`), "utf8"));
-const pub = createPublicClient({ chain: { ...foundry, rpcUrls: { default: { http: [RPC] } } }, transport: http(RPC) });
+const chain = {
+  id: 31337,
+  name: "Arc testnet fork",
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  rpcUrls: { default: { http: [RPC] } },
+};
+const pub = createPublicClient({ chain, transport: http(RPC) });
 
 let failures = 0;
 let passes = 0;
@@ -69,9 +74,10 @@ section("Player (PlayerHistory)");
 const P = (p) => p.Player_by_pk;
 check("A: matches / wins / losses / ties / voids", [P(pa).matches, P(pa).wins, P(pa).losses, P(pa).ties, P(pa).voids], [2, 1, 0, 0, 1]);
 check("B: matches / wins / losses / ties / voids", [P(pb).matches, P(pb).wins, P(pb).losses, P(pb).ties, P(pb).voids], [2, 0, 1, 0, 1]);
-check("A netAusd = pot − rake − stake (the settled match pays)", P(pa).netAusd, pot1 - rake1 - stake1);
-check("B netAusd = −stake", P(pb).netAusd, -stake1);
-check("netMon is 0 for both (the void moves nothing)", [P(pa).netMon, P(pb).netMon], ["0", "0"]);
+// Match 2 voided and refunded both stakes, so only match 1 moves net USDC.
+check("A netUsdc = pot − rake − stake (the settled match pays; the void moves nothing)", P(pa).netUsdc, pot1 - rake1 - stake1);
+check("B netUsdc = −stake", P(pb).netUsdc, -stake1);
+check("wageredUsdc counts only the decided match", [P(pa).wageredUsdc, P(pb).wageredUsdc], [stake1, stake1]);
 check("A rewardedWins (WinRewarded)", P(pa).rewardedWins, BigInt(m.match1.reward) > 0n ? 1 : 0);
 check("A chestsOpened = won chest + bought chests", P(pa).chestsOpened, (m.chest ? 1 : 0) + bought);
 const [idsA] = await pub.readContract({ address: m.contracts.cards, abi: abi("MempireCards"), functionName: "cardsOf", args: [A] });
@@ -91,7 +97,7 @@ check("deck coinIds on the seat rows", [a1?.coinIds, b1?.coinIds], [m.deckCoins.
 // ── matches ──
 section("Match");
 const MATCH = `query($id: String!) { Match_by_pk(id: $id) {
-  state outcome currency stake winnerSeat winner_id pot rake winnerPayout winReward disputed voidReason byTimeout
+  state outcome currency currencyAddress stake winnerSeat winner_id pot rake winnerPayout winReward disputed voidReason byTimeout
   player0_id player1_id session0 session1 plays0 plays1 playCount checkpointCount claimCount claim0 claim1
   metaEpoch marketEpoch_id chestTier chestForfeited
 } }`;
@@ -99,13 +105,13 @@ const M1 = (await gql(ENDPOINT, MATCH, { id: String(m.match1.id) })).Match_by_pk
 const M2 = (await gql(ENDPOINT, MATCH, { id: String(m.match2.id) })).Match_by_pk;
 const tiers = ["Silver", "Golden", "Magic", "Legendary"];
 check(`match ${m.match1.id}: Settled, Seat0, winner A`, [M1.state, M1.outcome, M1.winnerSeat, M1.winner_id], ["Settled", "Seat0", 0, A]);
-check(`match ${m.match1.id}: AUSD stake / pot / rake / winnerPayout`, [M1.currency, M1.stake, M1.pot, M1.rake, M1.winnerPayout], ["AUSD", stake1, pot1, rake1, pot1 - rake1]);
+check(`match ${m.match1.id}: USDC stake / pot / rake / winnerPayout`, [M1.currency, M1.currencyAddress, M1.stake, M1.pot, M1.rake, M1.winnerPayout], ["USDC", lc(m.contracts.usdc), stake1, pot1, rake1, pot1 - rake1]);
 check(`match ${m.match1.id}: rake = pot × rakeBps`, BigInt(M1.rake), (pot1 * BigInt(m.rakeBps)) / 10_000n);
 check(`match ${m.match1.id}: plays0 / plays1 / checkpoints / claims`, [M1.plays0, M1.plays1, M1.checkpointCount, M1.claimCount, M1.claim0, M1.claim1], [3, 3, 2, 2, 0, 0]);
 check(`match ${m.match1.id}: meta epoch snapshot at join`, [M1.metaEpoch, M1.marketEpoch_id], [m.match1.metaEpoch, String(m.match1.metaEpoch)]);
 check(`match ${m.match1.id}: chest tier / reward`, [M1.chestTier, M1.chestForfeited, M1.winReward], [m.match1.chest ? tiers[m.match1.chest.tier] : null, false, m.match1.reward]);
 check(`match ${m.match2.id}: Voided (disputed), no winner`, [M2.state, M2.outcome, M2.disputed, M2.voidReason, M2.winner_id], ["Voided", "Void", true, "Disputed", null]);
-check(`match ${m.match2.id}: MON, nothing raked or paid out`, [M2.currency, M2.stake, M2.rake, M2.winnerPayout], ["MON", stake2, "0", "0"]);
+check(`match ${m.match2.id}: USDC, nothing raked or paid out`, [M2.currency, M2.stake, M2.rake, M2.winnerPayout], ["USDC", stake2, "0", "0"]);
 check(`match ${m.match2.id}: B seat 0, A seat 1, session keys`, [M2.player0_id, M2.player1_id, M2.session0, M2.session1], [B, A, m.sessions.B, m.sessions.A]);
 check(`match ${m.match2.id}: disagreeing claims`, [M2.claim0, M2.claim1, M2.playCount], [0, 1, 4]);
 
@@ -161,17 +167,18 @@ section("MarketEpoch (MetaSource)");
 const sourceLogs = await pub.getLogs({
   address: m.contracts.marketMeta,
   event: parseAbiItem("event MetaSource(uint64 indexed epoch, uint8 source, address poster)"),
-  // From the deployment block: on a fork, anything older is proxied to Monad
-  // testnet, whose eth_getLogs caps the range at 100 blocks.
+  // From the deployment block: on a fork, anything older is proxied to Arc
+  // testnet's public RPC, which caps eth_getLogs ranges.
   fromBlock: BigInt(JSON.parse(readFileSync(join(indexerDir, "..", "shared/deployments/31337.json"), "utf8")).startBlock),
 });
 const epochs = (await gql(ENDPOINT, `{ MarketEpoch(order_by: { epoch: asc }) { id source sourceCode poster matches } }`)).MarketEpoch;
-const names = ["ChainlinkCRE", "PythMomentum"];
+const names = ["ChainlinkCRE", "OracleMomentum"];
 check(`${sourceLogs.length} MetaSource logs on chain → ${epochs.length} epochs, each with its source and poster`,
   epochs.map((e) => [e.id, e.source, e.sourceCode, e.poster]),
   sourceLogs.map((l) => [String(l.args.epoch), names[l.args.source], l.args.source, lc(l.args.poster)]));
 const e1 = epochs.find((e) => e.id === String(m.match1.metaEpoch));
-check(`the seeded matches' epoch ${m.match1.metaEpoch} is Pyth-sourced`, [e1?.source, e1?.sourceCode], ["PythMomentum", 1]);
+// Locally the relay's keeper posts the meta with postFromOracle (no CRE DON on a fork).
+check(`the seeded matches' epoch ${m.match1.metaEpoch} is oracle-sourced`, [e1?.source, e1?.sourceCode], ["OracleMomentum", 1]);
 const onchainSource = await pub.readContract({ address: m.contracts.marketMeta, abi: abi("MarketMeta"), functionName: "epochSource", args: [BigInt(m.match1.metaEpoch)] });
 check("…and MarketMeta.epochSource() agrees", onchainSource, 1);
 
@@ -183,8 +190,8 @@ const all = await gql(ENDPOINT, `{
   Match { id state currency pot rake endedAt marketEpoch_id }
   Checkpoint { timestamp }
   Coin(where: { registered: { _eq: true } }) { id wins losses ties fielded timesPlayed deckAppearances }
-  DailyStats { id dayStart plays checkpoints matchesSettled matchesVoided volumeMon volumeAusd rakeMon rakeAusd merges }
-  Totals_by_pk(id: "global") { matches matchesSettled matchesVoided plays volumeMon volumeAusd merges }
+  DailyStats { id dayStart plays checkpoints matchesSettled matchesVoided volumeUsdc rakeUsdc merges }
+  Totals_by_pk(id: "global") { matches matchesSettled matchesVoided plays volumeUsdc rakeUsdc merges }
   Merge { timestamp }
 }`);
 const deckCoins = new Set([...m.deckCoins.A, ...m.deckCoins.B].map(String));
@@ -201,31 +208,32 @@ check("every coin of A's winning deck has at least one win", settledM1Coins.ever
 const dayOf = (ts) => Math.floor(ts / 86_400) * 86_400;
 const days = [...new Set(all.DailyStats.map((d) => d.dayStart))];
 const sum = (xs) => xs.reduce((a, b) => a + BigInt(b), 0n);
-const dailyGot = all.DailyStats.map((d) => [d.id, d.plays, d.checkpoints, d.matchesSettled, d.matchesVoided, d.volumeMon, d.volumeAusd, d.rakeMon, d.rakeAusd, d.merges]).sort();
+const dailyGot = all.DailyStats.map((d) => [d.id, d.plays, d.checkpoints, d.matchesSettled, d.matchesVoided, d.volumeUsdc, d.rakeUsdc, d.merges]).sort();
 const dailyWant = all.DailyStats.map((d) => {
   const ended = all.Match.filter((x) => x.endedAt != null && dayOf(x.endedAt) === d.dayStart);
   const settledIn = ended.filter((x) => x.state === "Settled");
-  const cur = (c, f) => sum(settledIn.filter((x) => x.currency === c).map((x) => x[f])).toString();
+  const total = (f) => sum(settledIn.map((x) => x[f])).toString();
   return [
     d.id,
     all.Play.filter((p) => dayOf(p.timestamp) === d.dayStart).length,
     all.Checkpoint.filter((p) => dayOf(p.timestamp) === d.dayStart).length,
     settledIn.length,
     ended.filter((x) => x.state === "Voided").length,
-    cur("MON", "pot"), cur("AUSD", "pot"), cur("MON", "rake"), cur("AUSD", "rake"),
+    total("pot"), total("rake"),
     all.Merge.filter((x) => dayOf(x.timestamp) === d.dayStart).length,
   ];
 }).sort();
 check(`DailyStats (${days.length} day${days.length === 1 ? "" : "s"}): plays, checkpoints, settled, voided, volume, rake, merges`, dailyGot, dailyWant);
 const today = all.DailyStats.find((d) => d.dayStart === dayOf(Number(new Date(m.createdAt)) / 1000 | 0)) ?? all.DailyStats.at(-1);
-check("DailyStats counts the seeded plays, one settle and one void", [today.plays >= expected.length, today.matchesSettled >= 1, today.matchesVoided >= 1, BigInt(today.volumeAusd) >= pot1], [true, true, true, true]);
+check("DailyStats counts the seeded plays, one settle and one void", [today.plays >= expected.length, today.matchesSettled >= 1, today.matchesVoided >= 1, BigInt(today.volumeUsdc) >= pot1], [true, true, true, true]);
 
 const T = all.Totals_by_pk;
 const settledAll = all.Match.filter((x) => x.state === "Settled");
 check("Totals: matchesSettled / matchesVoided / plays / merges", [T.matchesSettled, T.matchesVoided, T.plays, T.merges],
   [settledAll.length, all.Match.filter((x) => x.state === "Voided").length, all.Play.length, all.Merge.length]);
-check("Totals: volume only from settled pots (the void adds nothing)", [T.volumeMon, T.volumeAusd],
-  [sum(settledAll.filter((x) => x.currency === "MON").map((x) => x.pot)).toString(), sum(settledAll.filter((x) => x.currency === "AUSD").map((x) => x.pot)).toString()]);
+check("Totals: volume and rake only from settled pots (the void adds nothing)", [T.volumeUsdc, T.rakeUsdc],
+  [sum(settledAll.map((x) => x.pot)).toString(), sum(settledAll.map((x) => x.rake)).toString()]);
+check("every match is USDC", all.Match.every((x) => x.currency === "USDC"), true);
 check("MarketEpoch.matches = matches that snapshotted it",
   epochs.map((e) => [e.id, e.matches]),
   epochs.map((e) => [e.id, all.Match.filter((x) => x.marketEpoch_id === e.id).length]));

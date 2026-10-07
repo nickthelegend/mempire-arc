@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The indexer against the LOCAL anvil chain (scripts/local-up.sh), with its own
-# Postgres and Hasura — nothing hosted, no HyperSync, no API token.
+# The indexer against the LOCAL arc-anvil fork of Arc testnet (scripts/local-up.sh:
+# chain 31337 on http://127.0.0.1:8710), with its own Postgres and Hasura —
+# nothing hosted, no HyperSync, no API token.
 #
 #   ./scripts/local-indexer.sh up       # Postgres :5435, Hasura :8090, envio dev on config.local.yaml
 #   ./scripts/local-indexer.sh status
@@ -29,7 +30,7 @@ mkdir -p "$RUN"
 PG_PORT="${MEMPIRE_PG_PORT:-5435}"
 HASURA_PORT="${MEMPIRE_HASURA_PORT:-8090}"
 INDEXER_PORT="${MEMPIRE_INDEXER_PORT:-9911}"
-RPC="${MEMPIRE_RPC:-http://127.0.0.1:8612}"
+RPC="${MEMPIRE_RPC:-http://127.0.0.1:8710}"
 NET=mempire-envio-net
 PG=mempire-envio-postgres
 HASURA=mempire-envio-hasura
@@ -58,12 +59,15 @@ kill_tree() {
 
 up() {
   cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 \
-    || { echo "anvil is not reachable at $RPC — run scripts/local-up.sh --relay from the repo root"; exit 1; }
+    || { echo "the arc-anvil fork is not reachable at $RPC — run scripts/local-up.sh from the repo root"; exit 1; }
+  [ "$(cast chain-id --rpc-url "$RPC")" = 31337 ] \
+    || { echo "$RPC is not chain 31337 — config.local.yaml indexes the local fork only"; exit 1; }
 
   # Addresses and start block: config.local.yaml must match the live
   # deployment. A redeploy can land at the same addresses (same deployer, same
   # nonce) on a fresh fork, so the start block is checked too.
   local dep="$ROOT/shared/deployments/31337.json" key addr
+  [ -f "$dep" ] || { echo "$dep is missing — deploy to the fork first (scripts/local-up.sh)"; exit 1; }
   for key in cards arena marketMeta startBlock; do
     addr=$(node -e "process.stdout.write(String(require('$dep').$key))")
     if ! grep -q "$addr" "$HERE/$CONFIG"; then
@@ -110,7 +114,7 @@ up() {
 
   listening "$INDEXER_PORT" && { echo "indexer port $INDEXER_PORT is taken"; exit 1; }
   envio_env
-  # -r: a fresh database every `up`; anvil state is the source of truth.
+  # -r: a fresh database every `up`; the fork's state is the source of truth.
   (cd "$HERE" && exec nohup pnpm exec envio dev -r >"$RUN/envio.log" 2>&1 </dev/null) &
   echo $! >"$RUN/envio.pid"
   echo "indexer   pid $(cat "$RUN/envio.pid"), log $RUN/envio.log, metrics :$INDEXER_PORT"

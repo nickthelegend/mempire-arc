@@ -8,10 +8,12 @@ const BOB: Address = "0x0000000000000000000000000000000000000b0b";
 const SESSION_A: Address = "0x000000000000000000000000000000000005e55a";
 const SESSION_B: Address = "0x000000000000000000000000000000000005e55b";
 const ZERO: Address = "0x0000000000000000000000000000000000000000";
-const AUSD: Address = "0x00000000000000000000000000000000000a05d0";
-const CHAIN = 10143;
+/** Arc's USDC ERC-20 interface — the arena's only stake currency. */
+const USDC: Address = "0x3600000000000000000000000000000000000000";
+const CHAIN = 5042002; // Arc testnet
 
-const ETHER = 10n ** 18n;
+const USD = 10n ** 6n; // USDC, 6 decimals
+const ETHER = 10n ** 18n; // $MEMPIRE, 18 decimals
 const FEED = (n: number): Address => `0x${n.toString(16).padStart(64, "0")}`;
 const HASH = (n: number): Address => `0x${n.toString(16).padStart(64, "f")}`;
 
@@ -72,14 +74,14 @@ const metaPosted = (epoch: number, coinIds: number[], bps: number[]) => ({
   params: { epoch: BigInt(epoch), coinIds: coinIds.map(BigInt), bps: bps.map(BigInt) },
 });
 
-/** MarketMeta.MetaSource: 0 = Chainlink CRE, 1 = Pyth momentum. */
+/** MarketMeta.MetaSource: 0 = Chainlink CRE, 1 = signed-oracle momentum (postFromOracle). */
 const metaSource = (epoch: number, source: number, poster: Address) => ({
   contract: "MarketMeta" as const,
   event: "MetaSource" as const,
   params: { epoch: BigInt(epoch), source: BigInt(source), poster },
 });
 
-const createMatch = (matchId: number, player: Address, tier: number, currency: Address, stake: bigint, cardIds: number[]) => ({
+const createMatch = (matchId: number, player: Address, tier: number, stake: bigint, cardIds: number[], currency: Address = USDC) => ({
   contract: "MempireArena" as const,
   event: "MatchCreated" as const,
   params: {
@@ -128,7 +130,7 @@ const claimed = (matchId: number, seat: number, winner: number) => ({
   params: { matchId: BigInt(matchId), seat: BigInt(seat), winner: BigInt(winner), finalHash: HASH(matchId * 100 + seat) },
 });
 
-const settled = (matchId: number, winner: number, currency: Address, pot: bigint, rake: bigint, winnerAddress: Address, byTimeout = false) => ({
+const settled = (matchId: number, winner: number, pot: bigint, rake: bigint, winnerAddress: Address, byTimeout = false, currency: Address = USDC) => ({
   contract: "MempireArena" as const,
   event: "MatchSettled" as const,
   params: { matchId: BigInt(matchId), winner: BigInt(winner), currency, pot, rake, winnerAddress, byTimeout },
@@ -143,6 +145,7 @@ const voided = (matchId: number, disputed: boolean) => ({
 /** Alice holds cards 1–8 (coins 0–7); Bob holds cards 9–16 (coins 4–11). Coins 4–7 sit in both decks. */
 const ALICE_DECK = [1, 2, 3, 4, 5, 6, 7, 8];
 const BOB_DECK = [9, 10, 11, 12, 13, 14, 15, 16];
+// Fighter tickers in shared/roster.json order (coin 3 is the MON fighter — a roster coin, not a chain token).
 const TICKERS = ["BTC", "ETH", "SOL", "MON", "BNB", "XRP", "DOGE", "AVAX", "LINK", "SHIB", "UNI", "ADA"];
 
 function setupRosterAndDecks(tx: ReturnType<typeof chainClock>) {
@@ -159,7 +162,7 @@ describe("match lifecycle", () => {
   it("create → join → plays → two agreeing claims → settled updates Match, Player, Coin, Card, DailyStats", async (t) => {
     const indexer = createTestIndexer();
     const tx = chainClock();
-    const stake = (5n * ETHER) / 100n; // Knight tier, MON
+    const stake = 5n * USD; // Knight tier: 5 USDC
     const pot = stake * 2n;
     const rake = pot / 10n;
 
@@ -170,7 +173,7 @@ describe("match lifecycle", () => {
             ...setupRosterAndDecks(tx),
             // Epoch 1: BTC (coin 0) buffed, LINK (coin 8) nerfed.
             ...tx([metaPosted(1, [0, 8], [1200, -900])]),
-            ...tx([createMatch(1, ALICE, 1, ZERO, stake, ALICE_DECK)]),
+            ...tx([createMatch(1, ALICE, 1, stake, ALICE_DECK)]),
             ...tx([joinMatch(1, BOB, BOB_DECK, 1, 1_760_000_600)], 5),
             ...tx([played(1, 0, 40, 0, -3, 7)]), // Alice drops card 1 → BTC
             ...tx([played(1, 1, 55, 2, 4, -6)]), // Bob drops card 11 → coin 6 (DOGE)
@@ -180,7 +183,7 @@ describe("match lifecycle", () => {
             // The second claim settles in the same transaction: Claimed → MatchSettled → WinRewarded → ChestGranted.
             ...tx([
               claimed(1, 1, 0),
-              settled(1, 0, ZERO, pot, rake, ALICE),
+              settled(1, 0, pot, rake, ALICE),
               {
                 contract: "MempireArena" as const,
                 event: "WinRewarded" as const,
@@ -204,6 +207,7 @@ describe("match lifecycle", () => {
       winner: match.winner_id,
       winnerSeat: match.winnerSeat,
       currency: match.currency,
+      currencyAddress: match.currencyAddress,
       plays0: match.plays0,
       plays1: match.plays1,
       playCount: match.playCount,
@@ -224,7 +228,8 @@ describe("match lifecycle", () => {
       outcome: "Seat0",
       winner: ALICE,
       winnerSeat: 0,
-      currency: "MON",
+      currency: "USDC",
+      currencyAddress: USDC,
       plays0: 2,
       plays1: 1,
       playCount: 3,
@@ -245,10 +250,10 @@ describe("match lifecycle", () => {
 
     const alice = await indexer.Player.getOrThrow(ALICE);
     const bob = await indexer.Player.getOrThrow(BOB);
-    t.expect([alice.matches, alice.wins, alice.losses, alice.netMon, alice.wageredMon, alice.plays]).toEqual([
+    t.expect([alice.matches, alice.wins, alice.losses, alice.netUsdc, alice.wageredUsdc, alice.plays]).toEqual([
       1, 1, 0, pot - rake - stake, stake, 2,
     ]);
-    t.expect([bob.matches, bob.wins, bob.losses, bob.netMon, bob.netAusd, bob.plays]).toEqual([1, 0, 1, -stake, 0n, 1]);
+    t.expect([bob.matches, bob.wins, bob.losses, bob.netUsdc, bob.wageredUsdc, bob.plays]).toEqual([1, 0, 1, -stake, stake, 1]);
     t.expect([alice.cardsOwned, alice.highestLevel, alice.rewardedWins, alice.rewardsMempire, alice.chestsEarned]).toEqual([
       8, 1, 1, 50n * ETHER, 1,
     ]);
@@ -291,9 +296,8 @@ describe("match lifecycle", () => {
       matchesCreated: day.matchesCreated,
       matchesStarted: day.matchesStarted,
       matchesSettled: day.matchesSettled,
-      volumeMon: day.volumeMon,
-      rakeMon: day.rakeMon,
-      volumeAusd: day.volumeAusd,
+      volumeUsdc: day.volumeUsdc,
+      rakeUsdc: day.rakeUsdc,
       plays: day.plays,
       checkpoints: day.checkpoints,
       cardsMinted: day.cardsMinted,
@@ -305,9 +309,8 @@ describe("match lifecycle", () => {
       matchesCreated: 1,
       matchesStarted: 1,
       matchesSettled: 1,
-      volumeMon: pot,
-      rakeMon: rake,
-      volumeAusd: 0n,
+      volumeUsdc: pot,
+      rakeUsdc: rake,
       plays: 3,
       checkpoints: 1,
       cardsMinted: 16,
@@ -318,33 +321,36 @@ describe("match lifecycle", () => {
     });
 
     const totals = await indexer.Totals.getOrThrow("global");
-    t.expect([totals.players, totals.coins, totals.matches, totals.matchesSettled, totals.plays, totals.volumeMon]).toEqual([
-      2, 12, 1, 1, 3, pot,
+    t.expect([totals.players, totals.coins, totals.matches, totals.matchesSettled, totals.plays, totals.volumeUsdc, totals.rakeUsdc]).toEqual([
+      2, 12, 1, 1, 3, pot, rake,
     ]);
   });
 
   it("a tie splits pot − rake evenly; a walkover pays the pot but counts as a timeout win", async (t) => {
     const indexer = createTestIndexer();
     const tx = chainClock();
-    const stake = 5_000_000n; // 5 AUSD
+    const stake = 5n * USD; // Knight tier: 5 USDC
     const pot = stake * 2n;
     const rake = 500_000n; // 5% tie rake
     const half = (pot - rake) / 2n;
+    const stake2 = 1n * USD; // Pauper tier: 1 USDC
+    const pot2 = stake2 * 2n;
+    const rake2 = pot2 / 10n;
 
     await indexer.process({
       chains: {
         [CHAIN]: {
           simulate: [
             ...setupRosterAndDecks(tx),
-            ...tx([createMatch(1, ALICE, 1, AUSD, stake, ALICE_DECK)]),
+            ...tx([createMatch(1, ALICE, 1, stake, ALICE_DECK)]),
             ...tx([joinMatch(1, BOB, BOB_DECK, 0, 1_760_000_600)]),
             ...tx([claimed(1, 0, 2)]),
-            ...tx([claimed(1, 1, 2), settled(1, 2, AUSD, pot, rake, ZERO)]),
-            // Match 2, MON: Bob never claims; Alice's claim stands after the deadline.
-            ...tx([createMatch(2, ALICE, 0, ZERO, ETHER / 100n, ALICE_DECK)]),
+            ...tx([claimed(1, 1, 2), settled(1, 2, pot, rake, ZERO)]),
+            // Match 2, Pauper: Bob never claims; Alice's claim stands after the deadline.
+            ...tx([createMatch(2, ALICE, 0, stake2, ALICE_DECK)]),
             ...tx([joinMatch(2, BOB, BOB_DECK, 0, 1_760_001_000)]),
             ...tx([claimed(2, 0, 0)]),
-            ...tx([settled(2, 0, ZERO, ETHER / 50n, ETHER / 500n, ALICE, true)], 600),
+            ...tx([settled(2, 0, pot2, rake2, ALICE, true)], 600),
           ],
         },
       },
@@ -352,7 +358,7 @@ describe("match lifecycle", () => {
 
     const m1 = await indexer.Match.getOrThrow("1");
     t.expect([m1.outcome, m1.winner_id, m1.tiePayoutEach, m1.currency, m1.marketEpoch_id]).toEqual([
-      "Tie", undefined, half, "AUSD", undefined,
+      "Tie", undefined, half, "USDC", undefined,
     ]);
     const s0 = await indexer.MatchSeat.getOrThrow("1-0");
     const s1 = await indexer.MatchSeat.getOrThrow("1-1");
@@ -365,8 +371,13 @@ describe("match lifecycle", () => {
 
     const alice = await indexer.Player.getOrThrow(ALICE);
     const bob = await indexer.Player.getOrThrow(BOB);
-    t.expect([alice.ties, alice.wins, alice.winsByTimeout, alice.netAusd]).toEqual([1, 1, 1, half - stake]);
-    t.expect([bob.ties, bob.losses, bob.netAusd, bob.netMon]).toEqual([1, 1, half - stake, -(ETHER / 100n)]);
+    // Net USDC sums across both matches: the tie's half-pot and the walkover.
+    t.expect([alice.ties, alice.wins, alice.winsByTimeout, alice.netUsdc, alice.wageredUsdc]).toEqual([
+      1, 1, 1, half - stake + (pot2 - rake2 - stake2), stake + stake2,
+    ]);
+    t.expect([bob.ties, bob.losses, bob.netUsdc]).toEqual([1, 1, half - stake - stake2]);
+    const day = (await indexer.DailyStats.getAll())[0]!;
+    t.expect([day.volumeUsdc, day.rakeUsdc, day.ties]).toEqual([pot + pot2, rake + rake2, 1]);
     // Tie: coins credited a tie on both sides, winRate untouched.
     const btc = await indexer.Coin.getOrThrow("0");
     t.expect([btc.ties, btc.wins, btc.fielded]).toEqual([1, 1, 2]);
@@ -375,20 +386,20 @@ describe("match lifecycle", () => {
   it("a disputed void refunds both stakes and moves no money", async (t) => {
     const indexer = createTestIndexer();
     const tx = chainClock();
-    const stake = ETHER / 4n; // Duke tier
+    const stake = 25n * USD; // Duke tier: 25 USDC
 
     await indexer.process({
       chains: {
         [CHAIN]: {
           simulate: [
             ...setupRosterAndDecks(tx),
-            ...tx([createMatch(7, ALICE, 2, ZERO, stake, ALICE_DECK)]),
+            ...tx([createMatch(7, ALICE, 2, stake, ALICE_DECK)]),
             ...tx([joinMatch(7, BOB, BOB_DECK, 0, 1_760_000_600)]),
             ...tx([played(7, 0, 10, 0, 1, 1)]),
             ...tx([claimed(7, 0, 0)]), // Alice says Alice won
             ...tx([claimed(7, 1, 1), voided(7, true)]), // Bob says Bob won → void
             // An open match nobody joined, cancelled: also no money.
-            ...tx([createMatch(8, ALICE, 0, ZERO, ETHER / 100n, [17])]),
+            ...tx([createMatch(8, ALICE, 0, USD, [17])]),
             ...tx([{ contract: "MempireArena" as const, event: "MatchCancelled" as const, params: { matchId: 8n, player: ALICE } }]),
           ],
         },
@@ -405,7 +416,7 @@ describe("match lifecycle", () => {
     }
     for (const who of [ALICE, BOB]) {
       const p = await indexer.Player.getOrThrow(who);
-      t.expect([p.voids, p.wins, p.losses, p.netMon, p.wageredMon]).toEqual([1, 0, 0, 0n, 0n]);
+      t.expect([p.voids, p.wins, p.losses, p.netUsdc, p.wageredUsdc]).toEqual([1, 0, 0, 0n, 0n]);
     }
     const btc = await indexer.Coin.getOrThrow("0");
     t.expect([btc.fielded, btc.wins, btc.losses, btc.deckAppearances]).toEqual([0, 0, 0, 1]);
@@ -415,9 +426,9 @@ describe("match lifecycle", () => {
     t.expect((await indexer.Player.getOrThrow(ALICE)).matchesCancelled).toBe(1);
 
     const day = (await indexer.DailyStats.getAll())[0]!;
-    t.expect([day.matchesVoided, day.matchesSettled, day.matchesCancelled, day.volumeMon, day.rakeMon]).toEqual([1, 0, 1, 0n, 0n]);
+    t.expect([day.matchesVoided, day.matchesSettled, day.matchesCancelled, day.volumeUsdc, day.rakeUsdc]).toEqual([1, 0, 1, 0n, 0n]);
     const totals = await indexer.Totals.getOrThrow("global");
-    t.expect([totals.matchesVoided, totals.matchesSettled, totals.volumeMon]).toEqual([1, 0, 0n]);
+    t.expect([totals.matchesVoided, totals.matchesSettled, totals.volumeUsdc]).toEqual([1, 0, 0n]);
   });
 });
 
@@ -560,7 +571,7 @@ describe("market meta", () => {
             ...tx([registerCoin(0, "BTC"), registerCoin(1, "ETH")]),
             // onReport: MetaPosted, then MetaSource(CRE) in the same tx.
             ...tx([metaPosted(10, [0, 1], [400, -200]), metaSource(10, 0, FORWARDER)]),
-            // postFromPyth, ten minutes later.
+            // postFromOracle, ten minutes later.
             ...tx([metaPosted(11, [0, 1], [-1500, 900]), metaSource(11, 1, KEEPER)], 600),
             // A MetaSource seen before its MetaPosted still ends up on the full row.
             ...tx([metaSource(12, 1, KEEPER), metaPosted(12, [1], [50])], 600),
@@ -580,14 +591,86 @@ describe("market meta", () => {
       400,
     ]);
     t.expect([e11.source, e11.sourceCode, e11.poster, e11.minBps, e11.topCoin_id]).toEqual([
-      "PythMomentum",
+      "OracleMomentum",
       1,
       KEEPER.toLowerCase(),
       -1500,
       "1",
     ]);
-    t.expect([e12.source, e12.coinCount, e12.maxBps, e12.topCoin_id]).toEqual(["PythMomentum", 1, 50, "1"]);
+    t.expect([e12.source, e12.coinCount, e12.maxBps, e12.topCoin_id]).toEqual(["OracleMomentum", 1, 50, "1"]);
     t.expect((await indexer.Coin.getOrThrow("1")).currentModifierBps).toBe(50);
     t.expect((await indexer.Totals.getOrThrow("global")).currentEpoch).toBe(12n);
+  });
+});
+
+describe("Arc port: held payouts, arena limits, oracle wiring", () => {
+  it("PayoutHeld credits the player's heldUsdc; a refused rake to a non-player is logged only", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    const TREASURY: Address = "0x00000000000000000000000000000000000057a5";
+    const held = (player: Address, amount: bigint) => ({
+      contract: "MempireArena" as const,
+      event: "PayoutHeld" as const,
+      params: { currency: USDC, player, amount },
+    });
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: [
+            ...tx(mintCard(1, ALICE, 0)), // gives Alice a Player row
+            ...tx([held(ALICE, 9n * USD), held(TREASURY, USD)]),
+            ...tx([held(ALICE, USD / 2n)]),
+          ],
+        },
+      },
+    });
+    t.expect((await indexer.Player.getOrThrow(ALICE)).heldUsdc).toBe(9n * USD + USD / 2n);
+    t.expect(await indexer.Player.get(TREASURY)).toBeUndefined();
+    const rows = await indexer.HeldPayout.getAll();
+    t.expect(rows.map((r) => [r.player, r.currency, r.amount]).sort((a, b) => String(a[2]).localeCompare(String(b[2])))).toEqual(
+      [
+        [ALICE, "USDC", 9n * USD],
+        [TREASURY, "USDC", USD],
+        [ALICE, "USDC", USD / 2n],
+      ].sort((a, b) => String(a[2]).localeCompare(String(b[2]))),
+    );
+  });
+
+  it("LimitsChanged keeps one ArenaLimits row with the latest max tier and pause switch", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    const limits = (maxTier: number, paused: boolean) => ({
+      contract: "MempireArena" as const,
+      event: "LimitsChanged" as const,
+      params: { maxTier: BigInt(maxTier), paused },
+    });
+    await indexer.process({
+      chains: { [CHAIN]: { simulate: [...tx([limits(1, false)]), ...tx([limits(1, true)], 60), ...tx([limits(3, false)], 60)] } },
+    });
+    const row = await indexer.ArenaLimits.getOrThrow("arena");
+    t.expect([row.maxTier, row.paused, row.changes]).toEqual([3, false, 3]);
+    t.expect((await indexer.ArenaLimits.getAll()).length).toBe(1);
+  });
+
+  it("OracleChanged on MempireCards and MarketMeta is logged per contract", async (t) => {
+    const indexer = createTestIndexer();
+    const tx = chainClock();
+    const ORACLE: Address = "0x0000000000000000000000000000000000007ac1";
+    const CARDS: Address = "0x000000000000000000000000000000000000ca5d";
+    await indexer.process({
+      chains: {
+        [CHAIN]: {
+          simulate: tx([
+            { contract: "MempireCards" as const, event: "OracleChanged" as const, params: { oracle: ORACLE } },
+            { contract: "MarketMeta" as const, event: "OracleChanged" as const, params: { oracle: ORACLE, cards: CARDS } },
+          ]),
+        },
+      },
+    });
+    const rows = (await indexer.OracleChange.getAll()).sort((a, b) => a.contract.localeCompare(b.contract));
+    t.expect(rows.map((r) => [r.contract, r.oracle, r.cards])).toEqual([
+      ["MarketMeta", ORACLE, CARDS],
+      ["MempireCards", ORACLE, undefined],
+    ]);
   });
 });

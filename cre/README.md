@@ -3,7 +3,18 @@
 A Chainlink Runtime Environment workflow that, every epoch, reads the 24-hour
 price change of all 36 fighters in the roster, reaches consensus across the
 DON, turns each change into a bounded strength modifier, and writes **one**
-report to `MarketMeta` on **Monad testnet** (`monad-testnet`, chain id 10143).
+report to `MarketMeta` on **Arc testnet** (CRE chain `arc-testnet`, chain id
+5042002, RPC `https://rpc.testnet.arc.io`).
+
+> **Arc mainnet is not a CRE chain.** CRE serves Arc testnet only. On Arc
+> mainnet (chain 5042) the meta is written by **`MarketMeta.postFromOracle`**
+> instead: anyone may call it with fresh signed-oracle price updates, and the
+> contract derives each fighter's modifier on chain from spot-vs-EMA momentum
+> (`clamp((spot − ema) / ema × GAIN, ±1500)`). The relay's keeper posts it
+> every window. Both paths write the same `modifierBps[epoch][coinId]` and emit
+> `MetaSource(epoch, source, poster)` (`0` = CRE, `1` = oracle), so the arena,
+> the clients and the indexer treat them alike. `config.*.json` refuses
+> `chainSelectorName: "arc-mainnet"` with that explanation.
 
 ```
 cron (every 10 min) ─┬─► CoinGecko /simple/price   (24 crypto + meme, one batched call per node)
@@ -34,7 +45,8 @@ This isn't a side feed. It decides fights.
   something you can buy.
 - The contract only accepts reports from the configured forwarder, requires
   strictly increasing epochs, and rejects any |bps| > 1500. No single server
-  can post the meta. A DON has to agree on it.
+  can post the meta. A DON has to agree on it (or, on mainnet, the oracle's
+  signed prices fix it: `postFromOracle` computes the numbers on chain).
 
 ## The math (`market-meta/meta.ts`, unit tested)
 
@@ -90,35 +102,35 @@ deterministic even if an even node count averages two neighbours.
   twice in one window), it logs and skips the write instead of paying for a
   `StaleEpoch` revert.
 - `gasLimit: 1500000`. Measured on anvil against the real MarketMeta bytecode
-  with all 36 coins non-zero, a direct `onReport` call uses **940,977 gas**
-  (36 cold SSTOREs ≈ 800k, plus the `MetaPosted` event and calldata). The
-  remaining ~560k covers the forwarder's signature checks and bookkeeping.
-  Monad charges by gas *limit*, so don't raise this casually.
+  with all 36 coins non-zero, a direct `onReport` call uses **~941k gas**
+  (36 cold SSTOREs ≈ 800k, plus the `MetaPosted` / `MetaSource` events and
+  calldata). The remaining ~560k covers the forwarder's signature checks and
+  bookkeeping. Gas on Arc is paid in USDC by the forwarder's transmitter.
 - The workflow fails loudly when `txStatus != SUCCESS` and also when the
   forwarder tx succeeded but `onReport` itself reverted
   (`receiverContractExecutionStatus == REVERTED`). The usual causes are a
   wrong forwarder or a stale epoch.
 - If `marketMetaAddress` is the zero address (the current state, because
-  MarketMeta isn't deployed on 10143 yet), the workflow computes, logs and
-  returns the encoded report and **does not write**.
+  MarketMeta isn't deployed on Arc testnet yet), the workflow computes, logs
+  and returns the encoded report and **does not write**.
 
 ## Layout
 
 ```
 cre/
-├── project.yaml              RPCs per target (monad-testnet → https://testnet-rpc.monad.xyz)
+├── project.yaml              RPCs per target (arc-testnet → https://rpc.testnet.arc.io) + forwarder notes
 ├── secrets.yaml              PYTH_API_KEY → env CRE_PYTH_API_KEY (names only)
 ├── .env.example              CRE_ETH_PRIVATE_KEY, CRE_PYTH_API_KEY (copy to .env, gitignored)
 ├── scripts/gen-roster.ts     shared/roster.json → market-meta/roster.ts
 └── market-meta/
     ├── workflow.yaml         staging-settings (10-min) / production-settings (hourly)
-    ├── config.staging.json   ← marketMetaAddress TODO
-    ├── config.production.json
+    ├── config.staging.json   arc-testnet, 10-min epochs  ← marketMetaAddress TODO
+    ├── config.production.json  arc-testnet, hourly epochs  ← marketMetaAddress TODO
     ├── main.ts               triggers, HTTP fetch + consensus, report, write
     ├── meta.ts               pure math / parsing / encoding
     ├── roster.ts             GENERATED — do not edit
     ├── meta.test.ts          curve, epoch, parsers, ABI round-trip + golden bytes
-    ├── main.test.ts          whole handler against the SDK's HTTP/EVM mocks
+    ├── main.test.ts          whole handler against the SDK's HTTP/EVM mocks (arc-testnet selector), config checks
     └── roster.test.ts        fails if roster.ts drifts from shared/roster.json
 ```
 
@@ -135,19 +147,19 @@ cd cre/market-meta && bun run gen:roster
 cd cre/market-meta
 bun install            # then `bunx cre-setup` once if the postinstall didn't run it
 bun run typecheck      # workflow (WASM-restricted types) + tests
-bun test               # 33 tests
+bun test               # 36 tests
 bunx cre-compile main.ts dist/market-meta.wasm   # offline WASM build, no login needed
 ```
 
 ## Before the first simulation: TODO
 
 1. **Set the MarketMeta address.** After `contracts/script/Deploy.s.sol` runs on
-   Monad testnet, copy `marketMeta` from `shared/deployments/10143.json` into
+   Arc testnet, copy `marketMeta` from `shared/deployments/5042002.json` into
    `market-meta/config.staging.json` → `marketMetaAddress`. For
-   `simulate --broadcast` that deployment's forwarder must be the simulator's
-   **MockKeystoneForwarder `0xB9F79d863261869B234c481D1f9A7af84AeAd192`** (deploy
-   with `CRE_FORWARDER=0xB9F79d863261869B234c481D1f9A7af84AeAd192`, or call
-   `MarketMeta.setForwarder(0xB9F7…D192)` as owner). Leave
+   `simulate --broadcast` that deployment's forwarder must be Arc testnet's
+   simulation forwarder **`0x6E9EE680ef59ef64Aa8C7371279c27E496b5eDc1`** (deploy
+   with `CRE_FORWARDER=0x6E9EE680ef59ef64Aa8C7371279c27E496b5eDc1`, or call
+   `MarketMeta.setForwarder(0x6E9E…eDc1)` as owner). Leave
    `expectedWorkflowOwner` unset while simulating.
 2. **Log in.** `cre workflow simulate` (and `cre init`) refuse to run without
    a CRE session:
@@ -156,10 +168,10 @@ bunx cre-compile main.ts dist/market-meta.wasm   # offline WASM build, no login 
    cre whoami
    ```
    Or set `CRE_API_KEY` for non-interactive use.
-3. **Env.** `cp .env.example .env` in `cre/` (a placeholder `.env` is already
-   there), then set:
-   - `CRE_ETH_PRIVATE_KEY`: a funded Monad-testnet key (the deployer works).
-     Only needed for `--broadcast`. Without it the CLI uses a built-in dummy key.
+3. **Env.** `cp .env.example .env` in `cre/`, then set:
+   - `CRE_ETH_PRIVATE_KEY`: a funded Arc-testnet key (the deployer works). Gas
+     on Arc is USDC, so fund it from the Circle faucet (Arc Testnet). Only
+     needed for `--broadcast`. Without it the CLI uses a built-in dummy key.
    - `CRE_PYTH_API_KEY`: a Pyth Hermes key, or leave it **empty** (the variable
      must exist; an empty value means stocks are flat).
 
@@ -173,7 +185,7 @@ address is set:
 cre workflow simulate market-meta --target staging-settings --non-interactive --trigger-index 0
 ```
 
-Real write through the MockKeystoneForwarder on Monad testnet, once
+Real write through the simulation forwarder on Arc testnet, once
 `marketMetaAddress` is set:
 
 ```bash
@@ -183,8 +195,9 @@ cre workflow simulate market-meta --target staging-settings --non-interactive --
 Then check it on chain:
 
 ```bash
-cast call <MarketMeta> "currentEpoch()(uint64)" --rpc-url https://testnet-rpc.monad.xyz
-cast call <MarketMeta> "modifierBps(uint64,uint16)(int16)" <epoch> 0 --rpc-url https://testnet-rpc.monad.xyz
+cast call <MarketMeta> "currentEpoch()(uint64)" --rpc-url https://rpc.testnet.arc.io
+cast call <MarketMeta> "modifierBps(uint64,uint16)(int16)" <epoch> 0 --rpc-url https://rpc.testnet.arc.io
+cast call <MarketMeta> "epochSource(uint64)(uint8)" <epoch> --rpc-url https://rpc.testnet.arc.io   # 0 = CRE
 ```
 
 Run it again ≥10 minutes later and you get a new epoch. Within the same
@@ -198,10 +211,12 @@ index 1:
 cre workflow simulate market-meta --target staging-settings --non-interactive --trigger-index 1 --http-payload '{}'
 ```
 
-## Deploy (when CRE deploy access is granted)
+Explorer: `https://explorer.testnet.arc.io/tx/<hash>`.
 
-1. Redeploy, or `setForwarder`, MarketMeta with the **production KeystoneForwarder
-   `0xF8344CFd5c43616a4366C34E3EEE75af79a74482`** on Monad testnet, then
+## Deploy (when CRE deploy access is granted; Arc testnet only)
+
+1. Redeploy, or `setForwarder`, MarketMeta with Arc testnet's **production
+   KeystoneForwarder `0x76c9cf548b4179F8901cda1f8623568b58215E62`**, then
    `setExpectedWorkflowOwner(<your workflow owner address>)` so only this
    workflow's reports are accepted. Put that address in
    `config.production.json` → `marketMetaAddress`.
@@ -215,3 +230,17 @@ cre workflow simulate market-meta --target staging-settings --non-interactive --
 Production runs hourly (`0 0 * * * *`, `epochSeconds: 3600`). Daily epochs
 would need only `epochSeconds: 86400` and a daily cron. The contract and the
 clients don't care about epoch length, only that epochs increase.
+
+On testnet the CRE workflow and the relay's `postFromOracle` keeper may both
+be live; whichever lands first takes the window and the other's write is a
+`StaleEpoch` the workflow skips (it checks `currentEpoch()` first). Note that
+`postFromOracle` uses ten-minute epochs (`MarketMeta.EPOCH_SECONDS`), so mixing
+it with hourly CRE epochs makes the hourly report stale; run the staging
+(10-minute) epochs alongside a keeper, or the keeper off.
+
+## Arc mainnet
+
+There is nothing to deploy here for mainnet. Deploy MarketMeta with
+`CRE_FORWARDER` unset (zero), wire its oracle, and let the relay's keeper call
+`postFromOracle` each window. Every mainnet epoch then carries
+`MetaSource(epoch, 1, poster)`, which the indexer records as `OracleMomentum`.

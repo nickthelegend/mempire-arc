@@ -6,18 +6,20 @@ import { describe, expect } from 'bun:test'
 import { EvmMock, HttpActionsMock, newTestRuntime, REPORT_METADATA_HEADER_LENGTH, test } from '@chainlink/cre-sdk/test'
 import { bytesToHex, encodeFunctionResult, type Hex, parseAbi } from 'viem'
 import type { Runtime } from '@chainlink/cre-sdk'
-import { type Config, initWorkflow, onCron as onCronTyped, PYTH_SECRET_ID } from './main'
+import { getNetwork } from '@chainlink/cre-sdk'
+import { type Config, configSchema, initWorkflow, onCron as onCronTyped, PYTH_SECRET_ID } from './main'
 import { decodeMetaReport, epochFor } from './meta'
 import { ROSTER } from './roster'
 
-const MONAD_TESTNET = 2183018362218727504n
+/** CRE chain selector of `arc-testnet` (chain id 5042002). */
+const ARC_TESTNET = 3034092155422581607n
 const MARKET_META = '0x1111111111111111111111111111111111111111'
 const NOW = Date.UTC(2026, 9, 5, 12, 3, 0)
 
 const baseConfig: Config = {
 	schedule: '0 */10 * * * *',
 	epochSeconds: 600,
-	chainSelectorName: 'monad-testnet',
+	chainSelectorName: 'arc-testnet',
 	marketMetaAddress: MARKET_META,
 	gasLimit: '1500000',
 	coingeckoBaseUrl: 'https://api.coingecko.com/api/v3/simple/price',
@@ -82,7 +84,7 @@ const currentEpochReturn = (epoch: bigint) =>
 
 type Written = { receiver: Hex; payload: Hex; gasLimit: bigint }
 const mockEvm = (onchainEpoch: bigint, written: Written[]) => {
-	const evm = EvmMock.testInstance(MONAD_TESTNET)
+	const evm = EvmMock.testInstance(ARC_TESTNET)
 	evm.callContract = () => ({ data: currentEpochReturn(onchainEpoch) })
 	evm.writeReport = (req) => {
 		const raw = req.report?.rawReport ?? new Uint8Array()
@@ -210,5 +212,26 @@ describe('initWorkflow', () => {
 			httpTrigger: { enabled: true, authorizedKeys: ['0x2222222222222222222222222222222222222222'] },
 		})
 		expect(both).toHaveLength(2)
+	})
+})
+
+describe('Arc targets', () => {
+	test('arc-testnet resolves to chain 5042002 and the selector the EVM mock listens on', () => {
+		const network = getNetwork({ chainFamily: 'evm', chainSelectorName: 'arc-testnet', isTestnet: true })
+		expect(network?.chainId).toBe('5042002')
+		expect(network?.chainSelector.selector).toBe(ARC_TESTNET)
+	})
+
+	test('both shipped configs target arc-testnet and pass the schema', async () => {
+		for (const file of ['config.staging.json', 'config.production.json']) {
+			const cfg = configSchema.parse(await Bun.file(`${import.meta.dir}/${file}`).json())
+			expect(cfg.chainSelectorName).toBe('arc-testnet')
+		}
+	})
+
+	test('arc-mainnet is refused: CRE does not serve it, postFromOracle writes the meta there', () => {
+		const r = configSchema.safeParse({ ...baseConfig, chainSelectorName: 'arc-mainnet' })
+		expect(r.success).toBe(false)
+		expect(r.error?.issues[0]?.message).toContain('postFromOracle')
 	})
 })
