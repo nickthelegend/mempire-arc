@@ -1,14 +1,13 @@
 import { IS_MAINNET, NETWORK_LABEL } from '../chain/provider';
-import { STAKE_MON_NEEDED } from '../chain/session';
+import { STAKE_USDC_NEEDED } from '../chain/session';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CardFrame } from '../components/CardFrame';
 import { StarterKit } from '../components/StarterKit';
-import { PrivySigner } from '../components/PrivySigner';
 import { Tutorial, resetTutorial, tutorialDone } from '../components/Tutorial';
 import { LeagueBadge } from '../components/LeagueBadge';
 import { Crowns, Pill } from '../components/ui';
-import { fmtMon, fmtStake, shortAddr } from '../lib/format';
+import { fmtUsdc, fmtStake, shortAddr } from '../lib/format';
 import { leagueFor } from '../lib/ranking';
 import { EASE_SNAP, usePulse } from '../lib/motion';
 import { FEES, useCollection } from '../state/collection';
@@ -132,7 +131,7 @@ function ConnectHero() {
       <div style={{ padding: '0 12px', marginTop: 6 }}>
         <Pill onClick={openPicker} tone="gold" style={{ fontSize: 19 }}>Play now</Pill>
       </div>
-      <span className="label" style={{ fontSize: 12 }}>{IS_MAINNET ? 'Monad mainnet · real funds' : `${NETWORK_LABEL} · passkey sign-in · no wallet needed`}</span>
+      <span className="label" style={{ fontSize: 12 }}>{IS_MAINNET ? 'Arc · real USDC · stakes capped' : `${NETWORK_LABEL} · passkey sign-in · no wallet needed`}</span>
     </div>
   );
 }
@@ -189,7 +188,7 @@ function TopHud({ onReplayTutorial }: { onReplayTutorial: () => void }) {
             className="display display--sm"
             style={{ display: 'block', fontSize: 14 }}
           >
-            {wallet.kind === 'passkey' || wallet.kind === 'injected' ? wallet.walletName : wallet.kind === 'privy' ? wallet.walletName.split(' ')[0] : 'anon_king'}
+            {wallet.kind === 'passkey' || wallet.kind === 'injected' ? wallet.walletName : 'anon_king'}
           </span>
           {/* The wallet, not the address.
               "Guest · ANoN…8UEG" needed 139px in a 110px box, so it rendered
@@ -205,7 +204,7 @@ function TopHud({ onReplayTutorial }: { onReplayTutorial: () => void }) {
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
           >
-            {wallet.kind === 'passkey' ? <SessionLeft /> : wallet.kind === 'guest' ? 'Guest' : wallet.kind === 'privy' ? '✉️ Privy · gas sponsored' : wallet.walletName}
+            {wallet.kind === 'passkey' ? <SessionLeft /> : wallet.kind === 'guest' ? 'Guest' : wallet.walletName}
           </span>
         </span>
       </button>
@@ -234,7 +233,7 @@ function TopHud({ onReplayTutorial }: { onReplayTutorial: () => void }) {
           </span>
         </div>
         <Chip icon="👑" value={String(wins)} tone="blue" />
-        <Chip icon="◆" value={fmtMon(wallet.mon).replace(' MON', '')} tone="gold" />
+        <Chip icon="$" value={fmtUsdc(wallet.usdc).replace('$', '')} tone="gold" />
       </div>
 
       {open && (
@@ -271,22 +270,13 @@ function TopHud({ onReplayTutorial }: { onReplayTutorial: () => void }) {
             >
               Replay tutorial
             </button>
-            {wallet.kind === 'privy' && wallet.privyConsent && (
-              <button
-                onClick={() => { void wallet.revokePrivySigner(); setOpen(false); }}
-                className="menu-item"
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 10px', borderRadius: 8, fontSize: 13, minHeight: 44, fontWeight: 700, color: 'var(--dim-on-wood)' }}
-              >
-                Revoke session signer
-              </button>
-            )}
             {wallet.kind === 'passkey' && (
               <button
                 onClick={() => { wallet.lock(); setOpen(false); }}
                 className="menu-item"
                 style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 10px', borderRadius: 8, fontSize: 13, minHeight: 44, fontWeight: 700, color: 'var(--dim-on-wood)' }}
               >
-                Lock session (zero the key)
+                Lock session (drop the key)
               </button>
             )}
             <button
@@ -345,14 +335,15 @@ export function Arena() {
   // not-connected early return rather than beside the value they feed.
   const chainMode = useChain((s) => s.mode);
   const chainCards = useChain((s) => s.cards);
-  const ausd = useChain((s) => s.ausdBalance);
-
+  // Mainnet opens the lower tiers first ($1 and $5): the contract refuses the rest.
+  const maxTier = useChain((s) => s.config?.maxTier ?? TIERS.length - 1);
   if (!wallet.connected) return <ConnectHero />;
 
   const currency = deck.currency;
   const stake = stakeOf(deck.tier, currency);
   const pot = stake * 2;
-  const holds = currency === 'AUSD' ? ausd : wallet.mon;
+  // One balance on Arc: USDC is both the stake and the gas.
+  const holds = wallet.usdc;
 
   /*
    * Big stakes ask for the passkey again.
@@ -401,8 +392,8 @@ export function Arena() {
       ? `${8 - mintedDeck} of your cards are not minted onchain yet`
       : holds < stake
         ? `You hold ${fmtStake(holds, currency)} — fund ${shortAddr(wallet.address)} to stake this tier`
-        : wallet.kind !== 'privy' && wallet.mon < STAKE_MON_NEEDED
-          ? `Not enough MON for gas — ${shortAddr(wallet.address)} needs ~${STAKE_MON_NEEDED}`
+        : holds < stake + STAKE_USDC_NEEDED
+          ? `A stake also needs ~${fmtUsdc(STAKE_USDC_NEEDED)} of USDC for gas — fund ${shortAddr(wallet.address)}`
           : '';
   const canStake = stakeBlocker === '';
 
@@ -418,40 +409,23 @@ export function Arena() {
       <TopHud onReplayTutorial={() => setShowTutorial(true)} />
       <Logo width={168} />
       <StarterKit />
-      <PrivySigner />
 
       {/* tier picker — carved wood rail of stake plates */}
       <section className="panel" data-tut="tier" style={{ padding: 9 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 7, gap: 8 }}>
           <span className="label">Stake tier</span>
-          {/* Dollars or MON. AUSD is Agora's dollar stablecoin: a pot that
-              means the same thing tomorrow as it does today. */}
-          <div role="radiogroup" aria-label="Stake currency" style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-            {(['AUSD', 'MON'] as const).map((c) => (
-              <button
-                key={c}
-                role="radio"
-                aria-checked={currency === c}
-                onClick={() => deck.setCurrency(c)}
-                disabled={queueing}
-                className="btn-3d"
-                style={{
-                  minHeight: 32, padding: '0 10px', borderRadius: 999, fontSize: 12, fontWeight: 800,
-                  border: '2px solid var(--ink)',
-                  background: currency === c ? 'linear-gradient(180deg, var(--btn-gold-hi), var(--btn-gold))' : 'var(--recess)',
-                  color: currency === c ? 'var(--ink)' : 'var(--dim-on-wood)',
-                }}
-              >
-                {c === 'AUSD' ? '$ AUSD' : 'MON'}
-              </button>
-            ))}
-          </div>
+          {/* Pots are USDC on Arc: dollars that mean the same thing tomorrow,
+              and the same token that pays the gas. */}
+          <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 800, color: 'var(--dim-on-wood)' }}>
+            $ USDC · on Arc
+          </span>
         </div>
         <div role="radiogroup" aria-label="Stake tier" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 7 }}>
           {TIERS.map((t, i) => {
             const active = deck.tier === i;
-            const amount = currency === 'AUSD' ? t.ausd : t.mon;
-            const affordable = holds >= amount;
+            const amount = t.usdc;
+            const closed = i > maxTier;
+            const affordable = holds >= amount && !closed;
             return (
               <button
                 key={t.name}
@@ -459,7 +433,7 @@ export function Arena() {
                 aria-checked={active}
                 aria-label={`${t.name} tier, ${fmtStake(amount, currency)}${i >= STEP_UP_TIER ? ', asks for your passkey' : ''}`}
                 onClick={() => deck.setTier(i)}
-                disabled={queueing}
+                disabled={queueing || closed}
                 className="btn-3d"
                 style={{
                   padding: '7px 2px 6px', minHeight: 52, borderRadius: 9, textAlign: 'center',
@@ -482,7 +456,7 @@ export function Arena() {
                     color: !affordable ? 'var(--red-on-wood)' : 'var(--gold-hi)',
                   }}
                 >
-                  {currency === 'AUSD' ? `$${amount}` : amount}
+                  {closed ? 'soon' : `$${amount}`}
                 </div>
               </button>
             );
@@ -609,7 +583,7 @@ export function Arena() {
             color: canStake ? 'var(--teal)' : 'var(--dim-on-wood)', lineHeight: 1.3,
           }}>
             {canStake
-              ? 'Escrowed on Monad — the winner is paid by the contract, in the block both results land.'
+              ? 'Escrowed in USDC on Arc — the winner is paid by the contract, in the block both results land, final in under a second.'
               : `${stakeBlocker} · this match counts for rating only.`}
           </span>
           {/*
@@ -692,7 +666,7 @@ export function Arena() {
 /**
  * Mint the deck's missing cards, batched.
  *
- * Deliberately not a silent background job: minting spends MON per card
+ * Deliberately not a silent background job: minting spends USDC per card
  * and the player should be the one deciding to, with the count in front of
  * them. Progress is reported per transaction because three confirmations on
  * testnet is long enough that a static spinner reads as a hang.
@@ -720,8 +694,8 @@ function MintDeckButton({ mints }: { mints: string[] }) {
           setState('busy');
           setError(null);
           void (async () => {
-            // One mint per card: each posts its own fresh Pyth price. Monad
-            // confirms each in about a block, so eight is seconds, not minutes.
+            // One mint per card: each posts its own fresh signed price. Arc
+            // finalises each in under a second, so eight is seconds, not minutes.
             let done = 0;
             for (const m of mints) {
               const coin = coinByMint(m);

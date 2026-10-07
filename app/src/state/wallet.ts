@@ -7,9 +7,6 @@ import { guestAccount, guestWasActive, markGuestActive } from '../lib/identity';
 import {
   createPasskeyAccount, passkeyErrorText, passkeyHint, signInWithPasskey, type PasskeySession,
 } from '../lib/passkey';
-import {
-  grantSessionSigner, privyConsent, privyLogin, privyLogout, privyWallet, revokeSessionSigner, type Consent,
-} from '../lib/privy';
 
 /*
  * The signed-in account, whichever kind it is.
@@ -18,11 +15,11 @@ import {
  *
  * A passkey sign-in opens a signing session: the derived key lives in memory
  * and every transaction signs without a prompt — mints, merges, card plays,
- * claims. That is what makes a 400 ms chain feel like a game rather than a
+ * claims. That is what makes a sub-second chain feel like a game rather than a
  * stream of confirmations. It is also a live key, so it is scoped in time:
  *
  *  - it ends after IDLE_MS without a signature, and at MAX_MS no matter what;
- *  - ending it calls Mera's `end()`, which zeroes the key; the account shows as
+ *  - ending it drops the in-memory key (`session.end()`); the account shows as
  *    locked, one tap and one passkey prompt opens a new session, and the
  *    address is the same because it is derived, not stored;
  *  - stakes at or above the Duke tier ask for the passkey again even inside
@@ -36,7 +33,7 @@ import {
 const IDLE_MS = 30 * 60_000;
 const MAX_MS = 2 * 60 * 60_000;
 
-export type WalletKind = 'passkey' | 'guest' | 'injected' | 'privy';
+export type WalletKind = 'passkey' | 'guest' | 'injected';
 
 export interface WalletChoice {
   id: string;
@@ -72,8 +69,8 @@ interface WalletState {
   walletName: string;
   walletIcon: string | null;
   kind: WalletKind | null;
-  /** MON balance, read from chain. */
-  mon: number;
+  /** USDC balance in dollars, read from chain (Arc's gas token and the stake currency). */
+  usdc: number;
   isGuest: boolean;
   /** A passkey account whose session has ended: same address, needs one prompt. */
   locked: boolean;
@@ -81,8 +78,6 @@ interface WalletState {
   sessionExpiresAt: number;
   pickerOpen: boolean;
   wallets: WalletChoice[];
-  /** Privy: the session signer consent, if the player has granted one. */
-  privyConsent: Consent | null;
 
   openPicker: () => void;
   closePicker: () => void;
@@ -90,16 +85,12 @@ interface WalletState {
   signInPasskey: () => Promise<void>;
   connectGuest: () => void;
   connect: (id: string) => Promise<void>;
-  /** Privy embedded wallet, via Privy's own sign-in modal. */
-  connectPrivy: () => Promise<void>;
-  grantPrivySigner: () => Promise<void>;
-  revokePrivySigner: () => Promise<void>;
   autoConnect: () => Promise<void>;
   /** Called after each signature: an active session stays open while it is used. */
   touch: () => void;
   lock: () => void;
   disconnect: () => void;
-  setChainBalance: (mon: number) => void;
+  setChainBalance: (usdc: number) => void;
   spend: (amount: number) => boolean;
   receive: (amount: number) => void;
 }
@@ -136,15 +127,13 @@ export const useWallet = create<WalletState>((set, get) => {
     walletName: '',
     walletIcon: null,
     kind: null,
-    mon: 0,
+    usdc: 0,
     isGuest: false,
     locked: false,
     sessionStartedAt: 0,
     sessionExpiresAt: 0,
     pickerOpen: false,
     wallets: [],
-    privyConsent: null,
-
     openPicker: () => {
       startDiscovery(refreshWallets);
       refreshWallets();
@@ -219,37 +208,6 @@ export const useWallet = create<WalletState>((set, get) => {
       }
     },
 
-    connectPrivy: async () => {
-      if (get().connecting) return;
-      set({ connecting: 'privy', error: null });
-      try {
-        const s = await privyLogin();
-        passkey?.session.end();
-        passkey = null;
-        setSigner({
-          kind: 'privy', address: s.address, account: s.address, wallet: privyWallet(), label: s.label, icon: null,
-        });
-        markGuestActive(false);
-        set({
-          connected: true, connecting: null, pickerOpen: false, error: null,
-          address: s.address, walletName: s.label, walletIcon: null,
-          kind: 'privy', isGuest: false, locked: false, privyConsent: privyConsent(),
-        });
-      } catch (e) {
-        set({ connecting: null, error: e instanceof Error ? e.message : 'Privy sign-in failed' });
-      }
-    },
-
-    grantPrivySigner: async () => {
-      const c = await grantSessionSigner();
-      set({ privyConsent: c });
-    },
-
-    revokePrivySigner: async () => {
-      await revokeSessionSigner();
-      set({ privyConsent: null });
-    },
-
     /*
      * A reload never opens a passkey session on its own — that would be a
      * prompt the player did not ask for. It shows the remembered account as
@@ -284,19 +242,18 @@ export const useWallet = create<WalletState>((set, get) => {
 
     disconnect: () => {
       if (lockTimer) clearTimeout(lockTimer);
-      if (get().kind === 'privy') void privyLogout();
       passkey?.session.end();
       passkey = null;
       setSigner(null);
       markGuestActive(false);
       set({
         connected: false, address: '', walletName: '', walletIcon: null, kind: null,
-        mon: 0, isGuest: false, locked: false, pickerOpen: false, sessionExpiresAt: 0, privyConsent: null,
+        usdc: 0, isGuest: false, locked: false, pickerOpen: false, sessionExpiresAt: 0,
       });
     },
 
-    setChainBalance: (mon) => set({ mon: +mon.toFixed(4) }),
-    spend: (amount) => get().mon >= amount,
+    setChainBalance: (usdc) => set({ usdc: +usdc.toFixed(6) }),
+    spend: (amount) => get().usdc >= amount,
     receive: () => { /* the chain is the only source of a balance */ },
   };
 });

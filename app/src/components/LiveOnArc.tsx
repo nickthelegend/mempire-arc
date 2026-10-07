@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatEther, formatUnits } from 'viem';
+import { formatUnits } from 'viem';
 import { explorerUrl } from '../chain/provider';
 import { shortAddr } from '../lib/format';
 import {
@@ -35,7 +35,7 @@ const ago = (ts: string): string => {
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`;
 };
 
-export function LiveOnMonad() {
+export function LiveOnArc() {
   const plays = usePoll<PlayRow[]>(() => latestPlays(12), 3000, []);
   const leaders = usePoll<LeaderRowIdx[]>(() => leaderboard(5), 15_000, []);
   const coins = usePoll<CoinStat[]>(coinWinRates, 30_000, []);
@@ -46,9 +46,9 @@ export function LiveOnMonad() {
   const fielded = coins.filter((c) => c.wins + c.losses >= 3).slice(0, 5);
 
   return (
-    <section aria-label="Live on Monad" style={{ display: 'grid', gap: 10 }}>
+    <section aria-label="Live on Arc" style={{ display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span className="label">Live on Monad</span>
+        <span className="label">Live on Arc</span>
         <span className="label" style={{ fontSize: 11 }}>indexed by Envio</span>
       </div>
 
@@ -58,7 +58,7 @@ export function LiveOnMonad() {
             ['players', stats.players],
             ['matches', stats.matchesSettled],
             ['plays', stats.plays],
-            ['pots', `$${Number(formatUnits(BigInt(stats.volumeAusd), 6)).toLocaleString()}`],
+            ['pots', `$${Number(formatUnits(BigInt(stats.volumeUsdc), 6)).toLocaleString()}`],
           ].map(([k, v]) => (
             <div key={String(k)}>
               <div className="money" style={{ fontSize: 15 }}>{String(v)}</div>
@@ -108,9 +108,7 @@ export function LiveOnMonad() {
               <span className="mono">{shortAddr(r.id)}</span>
               <span style={{ color: 'var(--dim)' }}>{r.wins}W · {r.losses}L</span>
               <span className="money" style={{ marginLeft: 'auto', fontSize: 13 }}>
-                {Number(formatUnits(BigInt(r.netAusd), 6)) !== 0
-                  ? `${Number(formatUnits(BigInt(r.netAusd), 6)) > 0 ? '+' : ''}$${Number(formatUnits(BigInt(r.netAusd), 6)).toFixed(2)}`
-                  : `${Number(formatEther(BigInt(r.netMon))).toFixed(3)} MON`}
+                {`${Number(formatUnits(BigInt(r.netUsdc), 6)) > 0 ? '+' : ''}$${Number(formatUnits(BigInt(r.netUsdc), 6)).toFixed(2)}`}
               </span>
             </div>
           ))}

@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { ARCHETYPE_NAMES, type Archetype } from '../sim/types';
 import { click } from '../lib/audio';
 import { coinByMint } from '../lib/coins';
-import { fmtMon } from '../lib/format';
+import { fmtUsdc } from '../lib/format';
 import { useCountUp } from '../lib/motion';
 
 type Tone = 'gold' | 'blue' | 'green' | 'red';
@@ -233,7 +233,7 @@ export function Crowns({ n, size = 13 }: { n: number; size?: number }) {
 }
 
 /**
- * Counts an amount up into place, formatted in the match's own currency (AUSD
+ * Counts an amount up into place, formatted in the match's own currency (USDC
  * reads as dollars). Split out so `MoneyRow` can stay a plain component when
  * the number is static — a hook cannot be called conditionally.
  */
@@ -265,7 +265,7 @@ export function MoneyRow({
   label, value, big, stack, count,
 }: {
   label: string; value: string; big?: boolean; stack?: boolean;
-  /** `format` defaults to MON; pass the match currency's formatter for AUSD. */
+  /** `format` defaults to dollars of USDC. */
   count?: { to: number; prefix?: string; delayMs?: number; format?: (n: number) => string };
 }) {
   return (
@@ -288,7 +288,7 @@ export function MoneyRow({
           to={count.to}
           prefix={count.prefix}
           delayMs={count.delayMs}
-          format={count.format ?? fmtMon}
+          format={count.format ?? fmtUsdc}
           style={{ fontSize: big ? 21 : 14, whiteSpace: 'nowrap', flexShrink: 0 }}
         />
       ) : (

@@ -13,20 +13,22 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const chainId = Number(process.env.VITE_CHAIN_ID ?? 10143);
+const chainId = Number(process.env.VITE_CHAIN_ID ?? 5042002); // Arc testnet; 5042 = Arc mainnet, 31337 = local fork
 const file = join(HERE, '..', 'src', 'shared', 'deployments', `${chainId}.json`);
 const fail = [];
 
-if (!existsSync(file)) {
+if (!existsSync(file) && process.env.ALLOW_NO_DEPLOYMENT === '1') {
+  console.warn(`preflight: no deployment for chain ${chainId} — building an offline/practice bundle (ALLOW_NO_DEPLOYMENT=1)`);
+} else if (!existsSync(file)) {
   fail.push(`no deployment for chain ${chainId} at src/shared/deployments/${chainId}.json — deploy, then run \`node scripts/sync-shared.mjs\``);
 } else {
   const d = JSON.parse(readFileSync(file, 'utf8'));
   if (Number(d.chainId) !== chainId) fail.push(`deployment file is stamped chain ${d.chainId}, build is for ${chainId}`);
-  for (const k of ['token', 'cards', 'arena', 'marketMeta', 'ausd', 'pyth']) {
+  for (const k of ['token', 'cards', 'arena', 'marketMeta', 'usdc', 'oracle']) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(String(d[k] ?? ''))) fail.push(`deployment is missing a valid "${k}" address`);
   }
 }
-if (process.env.VERCEL && chainId === 31337) fail.push('a Vercel build cannot target the local anvil chain (31337)');
+if (process.env.VERCEL && chainId !== 5042 && chainId !== 5042002) fail.push(`a Vercel build must target Arc (5042 or 5042002), not chain ${chainId}`);
 
 if (fail.length) {
   console.error('\npreflight: refusing to build —');

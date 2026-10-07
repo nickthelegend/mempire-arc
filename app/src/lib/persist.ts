@@ -77,7 +77,7 @@ export function recordMatch(address: string, result: MatchResult, attempt = 0): 
   const body = {
     ...result,
     pot: result.potSol, payout: result.payoutSol, rake: result.rakeSol,
-    currency: result.currency ?? 'MON',
+    currency: 'USDC',
   } as unknown as Record<string, unknown>;
   void apiPost(`/api/match/${address}`, 'match.post', body)
     .then(async (r) => {
@@ -99,8 +99,8 @@ export function recordMatch(address: string, result: MatchResult, attempt = 0): 
 export interface LeaderRow {
   address: string;
   netSol?: number;
-  netMon?: number;
-  netAusd?: number;
+  /** Net USDC won (dollars), chain-verified by the relay. */
+  netUsdc?: number;
   wins: number;
   losses: number;
   crowns: number;

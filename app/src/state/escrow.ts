@@ -12,7 +12,7 @@ import { track } from '../lib/track';
 import { useChain } from './chain';
 
 /*
- * The escrowed pot for one human match, on Monad.
+ * The escrowed USDC pot for one human match, on Arc.
  *
  * Seat 0 opens the match (stake + deck lock + session key, one transaction) and
  * relays the id; seat 1 reads the match back from chain, checks it is the one
@@ -74,7 +74,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
   phase: 'none',
   matchId: null,
   stake: 0,
-  currency: 'MON',
+  currency: 'USDC',
   players: null,
   deckCardIds: [],
   seat: null,
@@ -138,7 +138,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
   },
 
   awaitActive: async (matchId) => {
-    // 400 ms blocks: a join that is coming arrives in seconds. Poll briefly.
+    // Sub-second finality: a join that is coming arrives in seconds. Poll briefly.
     for (let i = 0; i < 60; i += 1) {
       const m = await readMatch(matchId).catch(() => null);
       if (m?.state === MATCH_STATE_ACTIVE) {

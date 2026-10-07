@@ -2,7 +2,7 @@ import { mintCardTx } from '../chain/actions';
 import { useEffect, useState } from 'react';
 import { buzz, click, play } from '../lib/audio';
 import { coinByMint, tickerOf } from '../lib/coins';
-import { fmtMon, fmtUsd } from '../lib/format';
+import { fmtUsdc, fmtUsd } from '../lib/format';
 import { useChain } from '../state/chain';
 import { useCollection } from '../state/collection';
 import { useMempire } from '../state/mempire';
@@ -40,7 +40,7 @@ export function Shop() {
   const refreshMempire = useMempire((s) => s.refresh);
   const [pending, setPending] = useState<string | null>(null);
   const chainMode = useChain((s) => s.mode);
-  const mintFeeSol = useChain((s) => s.config?.mintFeeMon ?? 0.01);
+  const mintFeeUsdc = useChain((s) => s.config?.mintFeeUsdc ?? 0.05);
   const wallet = useWallet();
   const { cards } = useCollection();
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +82,9 @@ export function Shop() {
        * One transaction, one fee, in the currency the button names.
        *
        * This used to spend $MEMPIRE here and *then* call `mintCardTx`, which
-       * takes the MON mint fee unconditionally — so the player who chose
-       * the $MEMPIRE price paid it on top of the MON one, and the token route
-       * was strictly worse than the MON route it was offered beside. The
+       * takes the USDC mint fee unconditionally — so the player who chose
+       * the $MEMPIRE price paid it on top of the USDC one, and the token route
+       * was strictly worse than the USDC route it was offered beside. The
        * program now takes one or the other, and the amount is its own constant
        * rather than a number this screen made up.
        *
@@ -158,7 +158,7 @@ export function Shop() {
       return;
     }
     play('error');
-    setError(`sign in to buy — cards are minted on chain (${fmtMon(solPrice)})`);
+    setError(`sign in to buy — cards are minted on chain (${fmtUsdc(solPrice)})`);
   };
 
 
@@ -198,7 +198,7 @@ export function Shop() {
                   <span className="display display--sm" style={{ fontSize: 15 }}>{tickerOf(coin)}</span>
                   {/*
                     * Only where it is real. Onchain both prices are fixed —
-                    * the program's $MEMPIRE constant and its MON mint fee —
+                    * the program's $MEMPIRE constant and its USDC mint fee —
                     * so a discount badge would advertise a reduction that the
                     * chain does not apply. It still means something in the
                     * simulated economy, where this screen is the ledger.
@@ -248,8 +248,8 @@ export function Shop() {
                     onClick={() => void buyWithSol(o.mint, solPrice)}
                     disabled={pending !== null || !(coin.priceUsd > 0)}
                     aria-label={`Buy ${tickerOf(coin)} for ${chainMode === 'onchain'
-                      ? `${mintFeeSol} MON mint fee`
-                      : `${solPrice} MON`}`}
+                      ? `${fmtUsdc(mintFeeUsdc)} USDC mint fee`
+                      : `${fmtUsdc(solPrice)} USDC`}`}
                     className="btn-3d"
                     style={{
                       minHeight: 44, padding: '0 10px', borderRadius: 9,
@@ -261,10 +261,10 @@ export function Shop() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {/* Onchain the SOL path is the program's mint at the
+                    {/* Onchain the USDC path is the program's mint at the
                         config fee — the demo discount price would be a number
                         the chain will not honour. */}
-                    {chainMode === 'onchain' ? <>{mintFeeSol} MON</> : <>{solPrice} MON</>}
+                    {chainMode === 'onchain' ? <>{fmtUsdc(mintFeeUsdc)}</> : <>{fmtUsdc(solPrice)}</>}
                   </button>
                 </span>
               )}

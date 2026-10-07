@@ -9,9 +9,12 @@
  * USDC — so a player only ever needs one token.
  *
  *  - **Cards.** `MempireCards.mintStarter` mints eight distinct fighters, once
- *    per address, and only the relayer may call it — so the deck exists before
- *    the player has ever held a cent. This runs on every chain, mainnet
- *    included: it costs the relayer only gas (fractions of a cent on Arc).
+ *    per address, and only the relayer may call it — so on a test chain the
+ *    deck exists before the player has ever held a cent. On Arc mainnet the
+ *    relayer's gas is real money, so a deck is minted only for an address that
+ *    already holds `ONBOARD_MAINNET_MIN_USDC` (default 1 USDC, one Pauper
+ *    stake): a sybil has to park a dollar per address to cost the relayer a
+ *    couple of cents, and the per-IP limit bounds the rate.
  *  - **USDC.** On a test chain only (Arc testnet, a local Arc fork), a drip
  *    (`ONBOARD_USDC_DRIP`, default 2 USDC) that covers a first $1 stake, its
  *    session-key gas float and a few card mints. It is sent as native value:
@@ -40,7 +43,7 @@
 import { formatEther, parseEther, parseEventLogs } from 'viem';
 import { requireWallet } from './auth.js';
 import {
-  IS_TEST_CHAIN, abis, archetypeOf, coinById, deployment, normAddress, publicClient, roster,
+  IS_MAINNET, IS_TEST_CHAIN, abis, archetypeOf, coinById, deployment, normAddress, publicClient, roster,
 } from './chain.js';
 import { checkRelayer, relayerAddress, relayerRefusal, sendRelayerTx } from './relayer.js';
 import { recordEvent } from './telemetry.js';
@@ -161,11 +164,18 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
 
   // ── the steps ─────────────────────────────────────────────────────────────
 
+  const mainnetMin = (() => {
+    try { return parseEther(process.env.ONBOARD_MAINNET_MIN_USDC ?? '1'); } catch { return parseEther('1'); }
+  })();
+
   async function stepStarter(address, client) {
     const claimed = await client.readContract({
       address: deployment.cards, abi: abis.cards, functionName: 'starterClaimed', args: [address],
     });
     if (claimed) return { status: 'already' };
+    if (IS_MAINNET && (await client.getBalance({ address })) < mainnetMin) {
+      return { status: 'needs-usdc', error: `hold at least ${formatEther(mainnetMin)} USDC on Arc first — then the starter deck is free` };
+    }
     if (!canMint) return { status: 'failed', error: bootNote ?? 'starter minting is unavailable' };
     const { hash, receipt } = await sendRelayerTx({
       address: deployment.cards,

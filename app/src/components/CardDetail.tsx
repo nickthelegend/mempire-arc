@@ -56,7 +56,7 @@ export function CardDetail({
   const coin = coinByMint(card.mint);
   const chainCards = useChain((s) => s.cards);
   /*
-   * The onchain twin of this card, if it has one. On Monad every card is an
+   * The onchain twin of this card, if it has one. On Arc every card is an
    * ERC-721 from the moment it is minted, so there is no separate tokenise
    * step — just a link to the token itself.
    */
@@ -280,7 +280,7 @@ export function CardDetail({
               boxShadow: 'inset 0 2px 0 rgba(255,255,255,.5), 0 5px 0 var(--btn-green-dark)',
             }}
           >
-            Card #{onChain.id} on MonadVision
+            Card #{onChain.id} on the Arc explorer
           </a>
         )}
 

@@ -4,7 +4,7 @@ import { DEPLOYMENT, explorerUrl } from '../chain/provider';
 /*
  * What the chain has of this match, said in one pill.
  *
- * "on Monad · 7 · 0.6s" means seven card plays are in blocks and the last one
+ * "on Arc · 7 · 0.6s" means seven card plays are in blocks and the last one
  * landed 0.6 s after it left the player's hand. The latency is measured, not
  * quoted: send-to-receipt on the player's own connection. Plays that could not
  * be logged are counted beside it rather than hidden, and a lost checkpoint is
@@ -14,11 +14,11 @@ import { DEPLOYMENT, explorerUrl } from '../chain/provider';
 
 const LOOK: Record<LogPhase, { dot: string; text: string; title: string }> = {
   off: { dot: 'var(--dim)', text: 'local sim', title: 'No session key — the match runs locally' },
-  live: { dot: 'var(--teal)', text: 'on Monad', title: 'Every card play is a Monad transaction from this match’s session key' },
+  live: { dot: 'var(--teal)', text: 'on Arc', title: 'Every card play is an Arc transaction from this match’s session key' },
   done: { dot: 'var(--teal)', text: 'logged', title: 'The match’s plays are on chain' },
 };
 
-export function MonadLogBadge() {
+export function ArcLogBadge() {
   const phase = usePlayLog((s) => s.phase);
   const confirmed = usePlayLog((s) => s.confirmed);
   const playsLost = usePlayLog((s) => s.playsLost);

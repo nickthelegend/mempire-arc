@@ -160,8 +160,8 @@ export function pvpQueue(payload: {
   ranked?: boolean;
   /** A 30s Rush must never be seated against a 3-minute standard match. */
   format?: 'standard' | 'rush';
-  /** MON and AUSD stakes are never paired with each other. */
-  currency?: 'MON' | 'AUSD';
+  /** USDC is the only stake currency; tiers are never paired across. */
+  currency?: 'USDC';
 }): void {
   const go = () => send({ t: 'queue', ...payload });
   if (socket?.readyState === WebSocket.OPEN) go();

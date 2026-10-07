@@ -1,7 +1,6 @@
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
-import { zeroAddress, type Address, type Hex } from 'viem';
-import { activeSigner, localSigner, type Signer } from './account';
-import { privyActorWallet, privyConsent } from '../lib/privy';
+import { type Address, type Hex } from 'viem';
+import { localSigner, type Signer } from './account';
 
 /*
  * Per-match session keys.
@@ -10,7 +9,8 @@ import { privyActorWallet, privyConsent } from '../lib/privy';
  * player's wallet to approve each one would end the game at the first card, so
  * a match gets its own throwaway key: generated in the browser, named as the
  * seat's session in the create/join transaction, and funded in that same
- * transaction with a few cents of MON for gas. The arena accepts it for that
+ * transaction with a few cents of USDC for gas (Arc's gas token, so the float
+ * comes out of the same balance as the stake). The arena accepts it for that
  * seat of that match and nothing else — it can log plays, post checkpoints and
  * record the result, and it can never move a stake or a card.
  *
@@ -19,41 +19,27 @@ import { privyActorWallet, privyConsent } from '../lib/privy';
  */
 
 /*
- * MON forwarded to the session key for its gas.
+ * USDC forwarded to the session key for its gas, in native units (18 decimals).
  *
- * A logged transaction is a ~45k gas limit (Monad bills the limit) at testnet's
- * 100 gwei floor, about 0.005 MON. A three-minute match is ~20–25 plays, a
- * checkpoint every 8 s (~22, and they yield to plays when the float runs low)
- * and the claim: ~45 transactions, ~0.22 MON at worst. 0.2 MON covers every
- * play with the checkpoints trimmed; whatever is left is swept back to the
- * player when the match ends, so the allowance is a float, not a fee.
+ * A logged play is ~30–50k gas; at Arc's ~25–40 gwei that is a tenth of a cent
+ * or so. A three-minute match is ~20–25 plays, a checkpoint every 8 s (~22, and
+ * they yield to plays when the float runs low) and the claim: ~45 transactions,
+ * well under 0.08 USDC. 0.1 USDC covers it; whatever is left is swept back to
+ * the player when the match ends, so the allowance is a float, not a fee. The
+ * arena caps it at 0.25 USDC.
  */
-export const SESSION_GAS_WEI = 200_000_000_000_000_000n; // 0.2 MON
+export const SESSION_GAS_WEI = 100_000_000_000_000_000n; // 0.1 USDC
 /**
- * MON a wallet needs to open or join a staked match: the session float plus
- * the stake transaction's own gas (~300k at 100 gwei). The relay's onboarding
- * drip (0.25) is sized to cover it.
+ * USDC a wallet needs beyond the stake to open or join a staked match: the
+ * session float plus the stake transaction's own gas (~400k gas). The relay's
+ * testnet drip (2 USDC) covers a $1 stake and this several times over.
  */
-export const STAKE_MON_NEEDED = 0.23;
+export const STAKE_USDC_NEEDED = 0.12;
 /** Kept back from logging so the seat can always afford to record its result. */
-export const CLAIM_RESERVE_WEI = 15_000_000_000_000_000n; // 0.015 MON
+export const CLAIM_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 USDC
 
-/*
- * Privy players need none of this. Their wallet has the relay as a session
- * signer under the match policy, so the relay sends their plays and claim as
- * them — sponsored, and limited to exactly those arena calls. No throwaway key,
- * no gas float, nothing to sweep.
- */
-export const usesPrivySigner = (): boolean =>
-  activeSigner()?.kind === 'privy' && privyConsent() !== null;
-
-function privyActor(): Signer {
-  const me = activeSigner()!;
-  return { kind: 'privy', address: me.address, account: me.address, wallet: privyActorWallet(), label: 'Privy session signer', icon: null };
-}
-
-/** The MON a create/join forwards to the seat's session key. None for Privy. */
-export const sessionGasWei = (): bigint => (usesPrivySigner() ? 0n : SESSION_GAS_WEI);
+/** The USDC a create/join forwards to the seat's session key. */
+export const sessionGasWei = (): bigint => SESSION_GAS_WEI;
 
 const KEY = (matchId: number) => `mempire_session_${matchId}`;
 const PENDING = 'mempire_session_pending';
@@ -67,7 +53,6 @@ let live: Live | null = null;
 
 /** A fresh key for the match about to be created or joined. Its id is not known yet. */
 export function prepareSession(): Address {
-  if (usesPrivySigner()) return zeroAddress; // the seat's own wallet speaks for it
   const k = generatePrivateKey();
   try { sessionStorage.setItem(PENDING, k); } catch { /* memory only */ }
   pending = k;
@@ -78,10 +63,6 @@ let pending: Hex | null = null;
 
 /** Bind the prepared key to the match id the chain assigned. */
 export function bindSession(matchId: number): Signer | null {
-  if (usesPrivySigner()) {
-    live = { matchId, signer: privyActor() };
-    return live.signer;
-  }
   const k = pending ?? (() => {
     try { return sessionStorage.getItem(PENDING) as Hex | null; } catch { return null; }
   })();
@@ -98,10 +79,6 @@ export function bindSession(matchId: number): Signer | null {
 /** The session signer for a match, recovered from this tab's storage if needed. */
 export function sessionFor(matchId: number): Signer | null {
   if (live?.matchId === matchId) return live.signer;
-  if (usesPrivySigner()) {
-    live = { matchId, signer: privyActor() };
-    return live.signer;
-  }
   try {
     const k = sessionStorage.getItem(KEY(matchId)) as Hex | null;
     if (!k) return null;
@@ -120,25 +97,28 @@ export const hasSession = (matchId: number): boolean => sessionFor(matchId) !== 
  */
 export async function sweepSession(matchId: number, to: Address): Promise<void> {
   const s = sessionFor(matchId);
-  if (!s || s.kind === 'privy') { forgetSession(matchId); return; }
+  if (!s) { forgetSession(matchId); return; }
   try {
     const { publicClient } = await import('./provider');
     const client = publicClient();
-    const [balance, gasPrice] = await Promise.all([
+    const [balance, fees, gas] = await Promise.all([
       client.getBalance({ address: s.address }),
-      client.getGasPrice(),
+      client.estimateFeesPerGas(),
+      client.estimateGas({ account: s.address, to, value: 1n }),
     ]);
-    const fee = gasPrice * 21_000n;
+    // Sized so the whole float but the fee goes home; maxFee bounds what the fee can be.
+    const fee = fees.maxFeePerGas * gas;
     if (balance > fee * 2n) {
       await s.wallet.sendTransaction({
-        account: s.account, chain: s.wallet.chain, to, value: balance - fee, gas: 21_000n, gasPrice,
+        account: s.account, chain: s.wallet.chain, to, value: balance - fee, gas,
+        maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
       });
     }
   } catch { /* dust */ }
   forgetSession(matchId);
 }
 
-/** Forget a finished match's key. What MON it has left is dust by design. */
+/** Forget a finished match's key. What USDC it has left is dust by design. */
 export function forgetSession(matchId?: number): void {
   if (matchId !== undefined) {
     try { sessionStorage.removeItem(KEY(matchId)); } catch { /* nothing */ }

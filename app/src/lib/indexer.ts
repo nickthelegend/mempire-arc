@@ -2,7 +2,7 @@
  * The Envio indexer, read over GraphQL.
  *
  * Everything that needs history comes from here: who has won the most, the
- * last fifty card plays across every match on Monad, which fighters win when
+ * last fifty card plays across every match on Arc, which fighters win when
  * the market has buffed them. None of it moves value — the game's money paths
  * read the contracts directly — so an indexer that is down costs the views
  * below, never a match.
@@ -58,15 +58,15 @@ export interface LeaderRowIdx {
   losses: number;
   ties: number;
   matches: number;
-  netMon: string;
-  netAusd: string;
+  /** USDC base units (6 decimals), as a decimal string. */
+  netUsdc: string;
   highestLevel: number;
 }
 
 export async function leaderboard(limit = 10): Promise<LeaderRowIdx[]> {
   const d = await gql<{ Player: LeaderRowIdx[] }>(`query Leaders($limit: Int!) {
-    Player(where: { matches: { _gt: 0 } }, order_by: [{ wins: desc }, { netAusd: desc }], limit: $limit) {
-      id wins losses ties matches netMon netAusd highestLevel
+    Player(where: { matches: { _gt: 0 } }, order_by: [{ wins: desc }, { netUsdc: desc }], limit: $limit) {
+      id wins losses ties matches netUsdc highestLevel
     }
   }`, { limit });
   return d?.Player ?? [];
@@ -102,14 +102,14 @@ export interface Totals {
   plays: number;
   cardsMinted: number;
   merges: number;
-  volumeMon: string;
-  volumeAusd: string;
+  /** USDC base units (6 decimals). */
+  volumeUsdc: string;
   currentEpoch: string;
 }
 
 export async function totals(): Promise<Totals | null> {
   const d = await gql<{ Totals_by_pk: Totals | null }>(`query Overview {
-    Totals_by_pk(id: "global") { players matches matchesSettled plays cardsMinted merges volumeMon volumeAusd currentEpoch }
+    Totals_by_pk(id: "global") { players matches matchesSettled plays cardsMinted merges volumeUsdc currentEpoch }
   }`);
   return d?.Totals_by_pk ?? null;
 }

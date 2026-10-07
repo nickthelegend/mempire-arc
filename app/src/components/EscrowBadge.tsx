@@ -22,7 +22,7 @@ const LOOK: Record<EscrowPhase, { dot: string; text: string; title: string }> = 
   waiting: { dot: 'var(--gold)', text: 'stake in', title: 'Your stake is escrowed; waiting for your opponent' },
   joining: { dot: 'var(--gold)', text: 'matching…', title: 'Matching your opponent’s stake' },
   live: { dot: 'var(--teal)', text: 'pot live', title: 'Both stakes are escrowed onchain' },
-  claiming: { dot: 'var(--gold)', text: 'reporting…', title: 'Recording this seat\u2019s result on Monad' },
+  claiming: { dot: 'var(--gold)', text: 'reporting…', title: 'Recording this seat\u2019s result on Arc' },
   claimed: { dot: 'var(--gold)', text: 'reported', title: 'Your result is recorded; waiting for your opponent’s' },
   settled: { dot: 'var(--teal)', text: 'paid', title: 'The pot has been paid out onchain' },
   refunded: { dot: 'var(--teal)', text: 'refunded', title: 'Your stake came back' },

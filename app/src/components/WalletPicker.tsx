@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { click } from '../lib/audio';
 import { useWallet } from '../state/wallet';
 import { passkeyHint, passkeysSupported } from '../lib/passkey';
-import { PRIVY_APP_ID, privyAvailable } from '../lib/privy';
 import { Spinner } from './ui';
 
 /** Guest mark — the only entry without an official adapter icon. */
@@ -98,14 +97,9 @@ function KeyMark({ size = 34 }: { size?: number }) {
 export function WalletPicker() {
   const {
     pickerOpen, closePicker, connect, connectGuest, createPasskey, signInPasskey,
-    connecting, error, wallets, locked, connectPrivy,
+    connecting, error, wallets, locked,
   } = useWallet();
   const [name, setName] = useState('');
-  // Email sign-in is offered only when the build and the relay both have Privy.
-  const [privyOn, setPrivyOn] = useState(false);
-  useEffect(() => {
-    if (pickerOpen && PRIVY_APP_ID) void privyAvailable().then(setPrivyOn);
-  }, [pickerOpen]);
   const hint = passkeyHint();
   const passkeys = passkeysSupported();
 
@@ -135,7 +129,7 @@ export function WalletPicker() {
               {locked && hint ? 'Welcome back' : 'Play Mempire'}
             </h2>
             <p className="fine" style={{ color: 'var(--dim-on-wood)' }}>
-              {IS_MAINNET ? 'Monad mainnet · real funds move' : `${NETWORK_LABEL} · no real funds move`}
+              {IS_MAINNET ? 'Arc · real USDC moves' : `${NETWORK_LABEL} · no real funds move`}
             </p>
           </div>
           <button
@@ -198,18 +192,6 @@ export function WalletPicker() {
               </button>
             )}
           </div>
-        )}
-
-        {privyOn && (
-          <Row
-            disabled={busy}
-            busy={connecting === 'privy'}
-            onClick={() => void connectPrivy()}
-            mark={<span aria-hidden style={{ width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', border: '2px solid var(--ink)', fontSize: 18 }}>✉️</span>}
-            title="Continue with email"
-            sub="Privy embedded wallet · gas sponsored · no popups mid-match"
-            right={connecting === 'privy' ? <Spinner size={16} /> : undefined}
-          />
         )}
 
         <Row

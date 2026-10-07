@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { LeagueBadge, TrophyDelta } from '../components/LeagueBadge';
 import { EscrowBadge } from '../components/EscrowBadge';
-import { MonadLogBadge } from '../components/MonadLogBadge';
+import { ArcLogBadge } from '../components/ArcLogBadge';
 import { Commentary, OpponentBrainBadge } from '../components/Commentary';
 import { CardArtWell } from '../components/CardFrame';
 import { ArchetypeIcon, MoneyRow, Pill } from '../components/ui';
@@ -44,13 +44,13 @@ function GoldBurst() {
 
 function ResultOverlay() {
   const { result, stakeSol, currency, dismiss, practice, soloVsBot } = useMatch();
-  const fmtMon = (n: number) => fmtStake(n, currency);
+  const fmtUsdc = (n: number) => fmtStake(n, currency);
   const escrowPhase = useEscrow((s) => s.phase);
   const chainChests = useChain((s) => s.chests);
   const nav = useNavigate();
   if (!result) return null;
   /**
-   * Did any MON or AUSD actually move for this match.
+   * Did any USDC actually move for this match.
    *
    * The card below counts a pot up in gold whether or not one exists. A guest,
    * an un-minted deck, or a wallet too thin to cover the stake all leave
@@ -119,21 +119,21 @@ function ResultOverlay() {
         {/* Staggered so the arithmetic reads in the order it happens: the pot
             fills, the rake is taken out of it, then what you actually take
             lands last and largest. */}
-        <MoneyRow label="Pot" value={fmtMon(result.potSol)} count={{ to: result.potSol, delayMs: 340, format: fmtMon }} />
+        <MoneyRow label="Pot" value={fmtUsdc(result.potSol)} count={{ to: result.potSol, delayMs: 340, format: fmtUsdc }} />
         <MoneyRow
           label={`House rake (${result.draw ? 5 : 10}%)`}
-          value={`−${fmtMon(result.rakeSol)}`}
-          count={{ to: result.rakeSol, prefix: '−', delayMs: 520, format: fmtMon }}
+          value={`−${fmtUsdc(result.rakeSol)}`}
+          count={{ to: result.rakeSol, prefix: '−', delayMs: 520, format: fmtUsdc }}
         />
         <MoneyRow
           big
           label={awaitingPayout
             ? (result.won ? 'You win (unpaid)' : result.draw ? 'Returned (unpaid)' : 'You lost')
             : result.won ? 'You take' : result.draw ? 'Returned' : 'You lost'}
-          value={result.payoutSol > 0 ? `+${fmtMon(result.payoutSol)}` : `−${fmtMon(stakeSol)}`}
+          value={result.payoutSol > 0 ? `+${fmtUsdc(result.payoutSol)}` : `−${fmtUsdc(stakeSol)}`}
           count={result.payoutSol > 0
-            ? { to: result.payoutSol, prefix: '+', delayMs: 700, format: fmtMon }
-            : { to: stakeSol, prefix: '−', delayMs: 700, format: fmtMon }}
+            ? { to: result.payoutSol, prefix: '+', delayMs: 700, format: fmtUsdc }
+            : { to: stakeSol, prefix: '−', delayMs: 700, format: fmtUsdc }}
         />
         {!escrowed && (
           <p
@@ -556,7 +556,7 @@ export function Battle() {
             and "0.1 SOL" printed above a match that escrowed nothing is exactly
             the claim this pair exists to keep honest. */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <MonadLogBadge />
+          <ArcLogBadge />
           {!match.practice && <EscrowBadge compact />}
           {/* Who holds the other seat: the classic bot or Kimi. */}
           {match.mode === 'bot' && <OpponentBrainBadge />}

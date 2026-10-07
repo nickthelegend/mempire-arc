@@ -3,21 +3,22 @@ import { useCollection } from './collection';
 import { useChain } from './chain';
 
 /*
- * The four stake tiers, in both currencies. These mirror
- * `MempireArena.stakeFor` exactly — the contract refuses any other amount, so
- * the tier is a fact the chain enforces, not a label the client picks.
+ * The four stake tiers, in USDC. These mirror `MempireArena.stakeFor` exactly —
+ * the contract refuses any other amount, so the tier is a fact the chain
+ * enforces, not a label the client picks. A deployment may open only the lower
+ * tiers (`maxTier`: mainnet launches with $1 and $5).
  */
 export const TIERS = [
-  { crowns: 1, mon: 0.01, ausd: 1, name: 'Pauper' },
-  { crowns: 2, mon: 0.05, ausd: 5, name: 'Knight' },
-  { crowns: 3, mon: 0.25, ausd: 25, name: 'Duke' },
-  { crowns: 4, mon: 1, ausd: 100, name: 'Emperor' },
+  { crowns: 1, usdc: 1, name: 'Pauper' },
+  { crowns: 2, usdc: 5, name: 'Knight' },
+  { crowns: 3, usdc: 25, name: 'Duke' },
+  { crowns: 4, usdc: 100, name: 'Emperor' },
 ] as const;
 
-export type StakeCurrency = 'MON' | 'AUSD';
+/** USDC is the one stake currency on Arc (and the gas token). */
+export type StakeCurrency = 'USDC';
 
-export const stakeOf = (tier: number, currency: StakeCurrency): number =>
-  (currency === 'AUSD' ? TIERS[tier].ausd : TIERS[tier].mon);
+export const stakeOf = (tier: number, _currency: StakeCurrency = 'USDC'): number => TIERS[tier].usdc;
 
 /** Tiers from here up ask for the passkey again, even inside an open session. */
 export const STEP_UP_TIER = 2;
@@ -27,9 +28,8 @@ export const DECK_SLOTS = 3;
 interface DeckState {
   active: string[]; // card ids, max 8
   tier: number; // index into TIERS
-  /** What the pot is in: MON, or Agora's AUSD dollar stablecoin. */
+  /** What the pot is in: always USDC on Arc. */
   currency: StakeCurrency;
-  setCurrency: (c: StakeCurrency) => void;
   /** Saved loadouts. Slot `slot` mirrors `active` while selected. */
   slots: string[][];
   slot: number;
@@ -45,8 +45,7 @@ export const useDeck = create<DeckState>((set, get) => ({
   // Filled from the account's on-chain cards by useChainSync.
   active: [],
   tier: 0,
-  currency: 'AUSD',
-  setCurrency: (c) => set({ currency: c }),
+  currency: 'USDC',
   slots: [[], [], []],
   slot: 0,
 

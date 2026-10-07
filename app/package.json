@@ -13,15 +13,12 @@
     "sync-shared": "node scripts/sync-shared.mjs"
   },
   "dependencies": {
-    "@category-labs/mera": "^0.2.0",
     "@fontsource/hanken-grotesk": "^5.3.0",
     "@fontsource/lilita-one": "^5.3.0",
     "@fontsource/martian-mono": "^5.3.0",
-    "@privy-io/react-auth": "^3.47.0",
     "@react-three/fiber": "^9.6.1",
     "@scure/bip32": "^2.4.0",
     "@scure/bip39": "^2.4.0",
-    "@stripe/stripe-js": "^10.0.0",
     "@types/three": "^0.185.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

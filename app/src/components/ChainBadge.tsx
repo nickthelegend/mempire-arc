@@ -5,7 +5,7 @@ import { useChain } from '../state/chain';
  *
  * This exists because the app has three honest states and it would be very easy
  * — and dishonest — to let all three look like the same one. A judge tapping
- * "Mint" deserves to know whether that spends real testnet MON, and a Guest
+ * "Mint" deserves to know whether that spends real testnet USDC, and a Guest
  * deserves to know their pot is a number in memory.
  *
  * `live` links to the deployed program on the explorer, so the claim is

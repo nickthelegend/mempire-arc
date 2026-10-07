@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IS_MAINNET } from '../chain/provider';
+import { fmtUsdc } from '../lib/format';
 import { fetchStarterClaimed } from '../chain/read';
 import { Pill, Spinner } from './ui';
 import { apiPost } from '../lib/api';
@@ -9,16 +10,17 @@ import { useWallet } from '../state/wallet';
 /*
  * The first thirty seconds of an account.
  *
- * A brand-new passkey account holds nothing — no MON for gas, no cards, no
- * currency — and a game that answers that with "go find a faucet" has lost the
- * player before the first match. So the first time an account signs in, the
- * relay does it for them, without being asked: it mints the eight-fighter
- * starter deck straight to the account (the contract allows it once per
- * address, and only from the relayer), requests 10,000 test AUSD from Agora's
- * testnet faucet, and drips a little MON for gas. The player watches it land.
+ * A brand-new passkey account holds nothing — no USDC, no cards — and a game
+ * that answers that with "go find a faucet" has lost the player before the
+ * first match. So the first time an account signs in on testnet, the relay does
+ * it for them, without being asked: it mints the eight-fighter starter deck
+ * straight to the account (the contract allows it once per address, and only
+ * from the relayer) and sends 2 test USDC — on Arc that one token is both the
+ * stake and the gas. The player watches it land.
  *
- * Testnet only. Nothing here exists on mainnet, where the starter deck would
- * be something a player buys.
+ * On Arc mainnet the deck is still free, but only for an account that already
+ * holds a dollar of USDC (the relayer's gas is real money there), and there is
+ * no drip: the player brings USDC — see the Deposit panel.
  */
 
 type Phase = 'idle' | 'busy' | 'done' | 'failed' | 'gone';
@@ -34,9 +36,10 @@ export function StarterKit() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [took, setTook] = useState<number | null>(null);
-  // What the relay did about AUSD: 'sent', or 'queued' inside Agora's faucet
-  // cooldown (the relay retries on its own about a minute later).
-  const [ausd, setAusd] = useState<string | null>(null);
+  // What the relay did about USDC: 'sent' (testnet drip), 'skipped' (already
+  // funded) or 'unconfigured' (mainnet: no drip).
+  const [usdc, setUsdc] = useState<string | null>(null);
+  const balance = useWallet((s) => s.usdc);
   const started = useRef(false);
 
   const claim = async () => {
@@ -50,12 +53,8 @@ export function StarterKit() {
       if (!r.ok) throw new Error(j?.error ?? `the relay answered ${r.status}`);
       await refreshSettled();
       setTook(performance.now() - t0);
-      setAusd(typeof j?.ausd === 'string' ? j.ausd : null);
+      setUsdc(typeof j?.usdc === 'string' ? j.usdc : null);
       setPhase('done');
-      if (j?.ausd === 'queued') {
-        // The relay's retry lands ~65 s later; refresh balances after it.
-        setTimeout(() => { void refreshSettled().then(() => setAusd('sent')); }, 75_000);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhase('failed');
@@ -63,7 +62,9 @@ export function StarterKit() {
   };
 
   useEffect(() => {
-    if (IS_MAINNET || !connected || !address || mode === 'offline') return;
+    if (!connected || !address || mode === 'offline') return;
+    // Mainnet: the relay mints the free deck only once the account holds $1.
+    if (IS_MAINNET && balance < 1) return;
     if (cards.length > 0 || started.current || triedThisSession.has(address)) return;
     started.current = true;
     triedThisSession.add(address);
@@ -71,19 +72,19 @@ export function StarterKit() {
       if (!claimed) void claim();
     }).catch(() => { /* the button below is the fallback */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, address, mode, cards.length]);
+  }, [connected, address, mode, cards.length, balance >= 1]);
 
-  if (IS_MAINNET || phase === 'gone' || phase === 'idle') return null;
+  if (phase === 'gone' || phase === 'idle') return null;
 
   return (
     <section className="well" style={{ padding: '10px 12px', display: 'grid', gap: 6 }} aria-live="polite">
       {phase === 'busy' && (
         <>
           <span className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Spinner size={14} /> Minting your starter deck on Monad…
+            <Spinner size={14} /> Minting your starter deck on Arc…
           </span>
           <p className="fine" style={{ color: 'var(--dim)', margin: 0 }}>
-            Eight fighters to your account, test AUSD for stakes, and a little MON for gas.
+            {IS_MAINNET ? 'Eight fighters to your account, gas on us.' : 'Eight fighters to your account, and 2 test USDC: stakes and gas, one token.'}
           </p>
         </>
       )}
@@ -93,9 +94,9 @@ export function StarterKit() {
             Your deck is on chain{took !== null ? ` · ${(took / 1000).toFixed(1)}s` : ''}
           </span>
           <p className="fine" style={{ color: 'var(--dim)', margin: 0 }}>
-            {ausd === 'queued'
-              ? 'Eight ERC-721 fighters and gas are yours. Your test AUSD is on its way: Agora\'s faucet pays one account a minute, and the relay retries on its own.'
-              : 'Eight ERC-721 fighters are yours, plus test AUSD and gas. Pick a tier in the Arena and put a dollar on your first match.'}
+            {usdc === 'sent'
+              ? `Eight ERC-721 fighters and ${fmtUsdc(2)} of test USDC are yours. Pick a tier in the Arena and put a dollar on your first match.`
+              : 'Eight ERC-721 fighters are yours. Pick a tier in the Arena and put a dollar on your first match.'}
           </p>
           <button
             type="button"

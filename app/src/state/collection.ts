@@ -5,7 +5,7 @@ import type { Archetype } from '../sim/types';
 
 /** Mirrors the contracts: `MempireCards.mintFee` and `MempireArena.rakeBps`/`tieRakeBps`. */
 export const FEES = {
-  mintMon: 0.01,
+  mintUsdc: 0.05, // USDC; the live figure is MempireCards.mintFee (6 decimals)
   rakePct: 10,
   tieRakePct: 5,
 };

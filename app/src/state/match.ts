@@ -49,7 +49,7 @@ export interface MatchOpts {
 export interface MatchResult {
   won: boolean;
   draw: boolean;
-  /** What the pot was in. Absent on results saved before the Monad port. */
+  /** What the pot was in (USDC). */
   currency?: StakeCurrency;
   potSol: number;
   payoutSol: number; // what the player received (0 on loss)
@@ -58,11 +58,11 @@ export interface MatchResult {
   crowns: [number, number]; // towers felled, [you, them]
   chest: ChestTier | null; // won a chest, unless all four slots were full
   /**
-   * Whether any MON or AUSD actually moved for this match.
+   * Whether any USDC actually moved for this match.
    *
    * `potSol` is what the tier *says* a pot is worth and is filled in whether or
    * not escrow opened, so it cannot answer this. Without the distinction the
-   * leaderboard's net-MON/AUSD columns accumulates winnings from matches that
+   * leaderboard's net-USDC column accumulates winnings from matches that
    * escrowed nothing — a running total of money that never existed.
    */
   escrowed: boolean;
@@ -101,7 +101,7 @@ interface MatchStore {
   botDeck: MatchCard[];
   /**
    * The stake per seat, in `currency` units. Named for the field it replaced
-   * on the old chain; it is MON or AUSD here, never SOL.
+   * on an earlier chain; it is USDC (dollars) here.
    */
   stakeSol: number;
   currency: StakeCurrency;
@@ -168,14 +168,11 @@ function currentMeta(): Map<number, number> {
  * stale read can only fail the escrow, which plays the match unstaked and
  * says so; it can never take money that is not there.
  */
-const GAS_HEADROOM_MON = 0.13;
-function canAffordStake(stake: number, currency: StakeCurrency): boolean {
-  const { mon, kind } = useWallet.getState();
-  // A Privy wallet's gas is sponsored, so it needs only the stake itself.
-  const headroom = kind === 'privy' ? 0 : GAS_HEADROOM_MON;
-  if (currency === 'MON') return mon >= stake + headroom;
-  const ausd = useChain.getState().ausdBalance;
-  return mon >= headroom && ausd >= stake;
+const GAS_HEADROOM_USDC = 0.13;
+function canAffordStake(stake: number, _currency: StakeCurrency): boolean {
+  // One balance on Arc: the stake, the session float and the gas all come out of USDC.
+  const { usdc } = useWallet.getState();
+  return usdc >= stake + GAS_HEADROOM_USDC;
 }
 
 /**
@@ -315,7 +312,7 @@ function sharedNow(): number {
   return Date.now() + clockSkew;
 }
 /**
- * MON or AUSD escrowed for a human match that has not settled yet. Every abnormal exit
+ * USDC escrowed for a human match that has not settled yet. Every abnormal exit
  * between escrow and settlement — opponent vanishing before the start, the sim
  * failing to build, a desync — must pass through here exactly once, or the
  * stake either leaks (player loses money to a bug) or duplicates (free money).
@@ -492,7 +489,7 @@ export const useMatch = create<MatchStore>((set, get) => ({
   playerDeck: [],
   botDeck: [],
   stakeSol: 0,
-  currency: 'AUSD',
+  currency: 'USDC',
   result: null,
   history: [],
   opponentName: '',

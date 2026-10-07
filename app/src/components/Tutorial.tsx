@@ -34,7 +34,7 @@ const STEPS: TutorialStep[] = [
   {
     anchor: 'tier',
     title: 'Pick your stakes',
-    body: `Each tier stakes ${IS_MAINNET ? '' : 'testnet '}AUSD dollars or MON. Both players pay in, the contract pays the winner 90% of the pot — the house keeps 10%, and says so. Without a stake a match counts for rating only.`,
+    body: `Each tier stakes ${IS_MAINNET ? '' : 'testnet '}USDC. Both players pay in, the contract pays the winner 90% of the pot — the house keeps 10%, and says so. Without a stake a match counts for rating only.`,
   },
   {
     anchor: 'practice',

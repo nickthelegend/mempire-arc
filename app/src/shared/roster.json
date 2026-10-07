@@ -1,5 +1,5 @@
 {
- "chainId": 10143,
+ "chainId": 5042002,
  "builtAt": "2026-10-05T09:15:47.381Z",
  "source": "Pyth price_feeds catalogue (hermes /v2/price_feeds), symbols matched exactly — never by fuzzy search",
  "coins": [

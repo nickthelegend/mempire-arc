@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  fetchCardsFor, fetchChests, fetchConfig, fetchMarketMeta, fetchMonBalance, fetchRegisteredCoins,
+  fetchCardsFor, fetchChests, fetchConfig, fetchMarketMeta, fetchUsdcBalance, fetchRegisteredCoins,
   fetchTokenBalances, type ChainCard, type ChainChest, type ChainCoin, type ChainConfig,
 } from '../chain/read';
 import { canSign } from '../chain/account';
@@ -31,9 +31,11 @@ interface ChainState {
   chests: ChainChest[];
   /** Token balances keyed by lowercase token address. */
   balances: Map<string, number>;
-  /** MON. Named for the field it replaced so existing readers keep working. */
-  solBalance: number;
-  ausdBalance: number;
+  /**
+   * USDC, in dollars — Arc's gas token and the stake currency, one balance
+   * (read natively, 18 decimals, so gas-sized remainders are not truncated).
+   */
+  usdcBalance: number;
   mempireBalance: number;
   metaEpoch: number;
   /** Bumped when live prices or the market meta change, so views re-render. */
@@ -73,16 +75,15 @@ export const useChain = create<ChainState>((set, get) => {
   };
 
   const readWallet = async (owner: string) => {
-    const [cards, balances, mon, chests] = await Promise.all([
+    const [cards, balances, usdc, chests] = await Promise.all([
       fetchCardsFor(owner),
       fetchTokenBalances(owner),
-      fetchMonBalance(owner),
+      fetchUsdcBalance(owner),
       fetchChests(owner).catch(() => []),
     ]);
-    const ausd = DEPLOYMENT ? balances.get(DEPLOYMENT.ausd.toLowerCase()) ?? 0 : 0;
     const mem = DEPLOYMENT ? balances.get(DEPLOYMENT.token.toLowerCase()) ?? 0 : 0;
-    set({ cards, balances, solBalance: mon, ausdBalance: ausd, mempireBalance: mem, chests });
-    useWallet.getState().setChainBalance(mon);
+    set({ cards, balances, usdcBalance: usdc, mempireBalance: mem, chests });
+    useWallet.getState().setChainBalance(usdc);
   };
 
   return {
@@ -95,8 +96,7 @@ export const useChain = create<ChainState>((set, get) => {
     cards: [],
     chests: [],
     balances: new Map(),
-    solBalance: 0,
-    ausdBalance: 0,
+    usdcBalance: 0,
     mempireBalance: 0,
     metaEpoch: 0,
     marketVersion: 0,
@@ -118,7 +118,7 @@ export const useChain = create<ChainState>((set, get) => {
           mode: get().mode === 'offline' ? 'simulated' : get().mode,
         });
       } catch (e) {
-        set({ mode: 'offline', loading: false, error: e instanceof Error ? e.message : 'Could not reach Monad' });
+        set({ mode: 'offline', loading: false, error: e instanceof Error ? e.message : 'Could not reach Arc' });
       }
     },
 
@@ -136,7 +136,7 @@ export const useChain = create<ChainState>((set, get) => {
       }
     },
 
-    // A settlement or a chest reveal lands in the next block — 400 ms — but the
+    // A settlement or a chest reveal is final in under a second on Arc, but the
     // RPC a read hits may be a block behind. Three reads over a few seconds is
     // the difference between "it worked" and "it worked after a refresh".
     refreshSettled: async () => {
@@ -156,7 +156,7 @@ export const useChain = create<ChainState>((set, get) => {
     },
 
     clearWallet: () => set({
-      owner: null, cards: [], chests: [], balances: new Map(), solBalance: 0, ausdBalance: 0,
+      owner: null, cards: [], chests: [], balances: new Map(), usdcBalance: 0,
       mempireBalance: 0, mode: get().config ? 'simulated' : 'offline', lastSignature: null,
     }),
     noteSignature: (sig) => set({ lastSignature: sig }),

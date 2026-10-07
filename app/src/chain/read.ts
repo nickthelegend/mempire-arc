@@ -3,7 +3,7 @@ import cardsAbi from '../shared/abi/MempireCards.json';
 import arenaAbi from '../shared/abi/MempireArena.json';
 import metaAbi from '../shared/abi/MarketMeta.json';
 import { COINS } from '../lib/coins';
-import { DEPLOYMENT, publicClient } from './provider';
+import { DEPLOYMENT, USDC, publicClient } from './provider';
 
 /*
  * Everything the client reads from chain, in one place.
@@ -21,7 +21,11 @@ export const META_ABI = metaAbi as Abi;
 export interface ChainConfig {
   address: string;
   treasury: string;
-  mintFeeMon: number;
+  /** USDC (dollars) per card mint. */
+  mintFeeUsdc: number;
+  /** Highest stake tier the arena opens new matches at (mainnet launches at 1: $1 and $5). */
+  maxTier: number;
+  paused: boolean;
   rakePct: number;
   tieRakePct: number;
   matchTimeoutSecs: number;
@@ -38,7 +42,7 @@ export async function fetchConfig(): Promise<ChainConfig | null> {
   const d = DEPLOYMENT;
   const read = (address: Address, abi: Abi, functionName: string) =>
     c.readContract({ address, abi, functionName }) as Promise<unknown>;
-  const [treasury, mintFee, rake, tieRake, timeout, band, nextCard, nextMatch, timeScale, epoch] = await Promise.all([
+  const [treasury, mintFee, rake, tieRake, timeout, band, nextCard, nextMatch, timeScale, epoch, maxTier, paused] = await Promise.all([
     read(d.arena, ARENA_ABI, 'treasury'),
     read(d.cards, CARDS_ABI, 'mintFee'),
     read(d.arena, ARENA_ABI, 'rakeBps'),
@@ -49,11 +53,15 @@ export async function fetchConfig(): Promise<ChainConfig | null> {
     read(d.arena, ARENA_ABI, 'nextMatchId'),
     read(d.cards, CARDS_ABI, 'timeScale'),
     read(d.marketMeta, META_ABI, 'currentEpoch'),
+    read(d.arena, ARENA_ABI, 'maxTier'),
+    read(d.arena, ARENA_ABI, 'paused'),
   ]);
   return {
     address: d.arena,
     treasury: treasury as string,
-    mintFeeMon: Number(formatEther(mintFee as bigint)),
+    mintFeeUsdc: Number(formatUnits(mintFee as bigint, 6)),
+    maxTier: Number(maxTier),
+    paused: Boolean(paused),
     rakePct: Number(rake) / 100,
     tieRakePct: Number(tieRake) / 100,
     matchTimeoutSecs: Number(timeout),
@@ -124,10 +132,10 @@ export interface ChainMatch {
   address: string;
   id: number;
   tier: number;
-  /** Stake in whole units of the match currency (MON or AUSD). */
+  /** Stake in dollars of USDC. */
   stake: number;
   stakeRaw: bigint;
-  currency: 'MON' | 'AUSD';
+  currency: 'USDC';
   currencyAddress: Address;
   players: [string, string];
   sessions: [string, string];
@@ -148,8 +156,6 @@ export const MATCH_STATE_ACTIVE = 2;
 export const MATCH_STATE_SETTLED = 3;
 export const NO_CLAIM = 3;
 
-const ZERO = '0x0000000000000000000000000000000000000000';
-
 export async function fetchMatchById(id: number): Promise<ChainMatch | null> {
   if (!DEPLOYMENT) return null;
   const m = await publicClient().readContract({
@@ -157,15 +163,14 @@ export async function fetchMatchById(id: number): Promise<ChainMatch | null> {
   }) as Record<string, unknown>;
   if (Number(m.state) === 0) return null;
   const currencyAddress = m.currency as Address;
-  const isMon = currencyAddress.toLowerCase() === ZERO;
   const stakeRaw = BigInt(m.stake as bigint);
   return {
     address: `${DEPLOYMENT.arena}#${id}`,
     id,
     tier: Number(m.tier),
-    stake: Number(isMon ? formatEther(stakeRaw) : formatUnits(stakeRaw, 6)),
+    stake: Number(formatUnits(stakeRaw, 6)), // USDC, 6 decimals
     stakeRaw,
-    currency: isMon ? 'MON' : 'AUSD',
+    currency: 'USDC',
     currencyAddress,
     players: [m.p0 as string, m.p1 as string],
     sessions: [m.s0 as string, m.s1 as string],
@@ -228,23 +233,28 @@ export async function fetchRecentSettlements(limit = 12): Promise<ChainMatch[]> 
     .slice(0, limit);
 }
 
-export async function fetchMonBalance(owner: string): Promise<number> {
+/**
+ * The account's USDC, in dollars. Read natively (18 decimals): on Arc the
+ * native balance and the ERC-20 at 0x3600…0000 are one balance, and the native
+ * view is the exact one (the ERC-20 view truncates below a micro-dollar).
+ */
+export async function fetchUsdcBalance(owner: string): Promise<number> {
   const wei = await publicClient().getBalance({ address: owner as Address });
   return Number(formatEther(wei));
 }
 
-/** $MEMPIRE and AUSD balances, keyed by token address (lowercase). */
+/** $MEMPIRE and USDC balances, keyed by token address (lowercase). */
 export async function fetchTokenBalances(owner: string): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (!DEPLOYMENT) return out;
   const c = publicClient();
-  const [mem, ausd] = await Promise.all([
+  const [mem, usdc] = await Promise.all([
     c.readContract({ address: DEPLOYMENT.token, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address] }),
-    c.readContract({ address: DEPLOYMENT.ausd, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address] })
+    c.readContract({ address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [owner as Address] })
       .catch(() => 0n),
   ]);
   out.set(DEPLOYMENT.token.toLowerCase(), Number(formatEther(mem)));
-  out.set(DEPLOYMENT.ausd.toLowerCase(), Number(formatUnits(ausd as bigint, 6)));
+  out.set(USDC.toLowerCase(), Number(formatUnits(usdc as bigint, 6)));
   return out;
 }
 

@@ -10,21 +10,21 @@ import { CHAIN, CHAIN_ID, RPC_URL, publicClient } from './provider';
  *
  * Three kinds of signer, one interface:
  *
- *  - `passkey` — a Mera account. One passkey ceremony derives a secp256k1 key
- *    from the authenticator's PRF output; it lives in a signing session in
- *    memory and nowhere else. Signing never prompts while the session is open.
+ *  - `passkey` — one WebAuthn ceremony derives a secp256k1 key from the
+ *    authenticator's PRF output (lib/passkey.ts); it lives in a signing session
+ *    in memory and nowhere else. Signing never prompts while the session is open.
  *  - `guest` — a key generated in this browser, for the "play in fifteen
  *    seconds" path on a device whose authenticator has no PRF. Testnet only.
  *  - `injected` — a browser wallet found through EIP-6963 (MetaMask, Rabby,
  *    Phantom, Backpack…). Every transaction is the wallet's own prompt.
  *
  * Everything that sends a transaction goes through `send` below, which is the
- * one place gas is sized. Monad charges for the gas *limit*, not the gas used,
- * so a generous default limit is a real cost to the player: every limit here is
- * an estimate plus a small margin.
+ * one place gas is sized: every limit is an estimate plus a small margin, and
+ * fees are kept above Arc's 20 gwei mempool floor (below it a transaction is
+ * dropped silently). Gas is paid in USDC from the same balance as stakes.
  */
 
-export type SignerKind = 'passkey' | 'guest' | 'injected' | 'privy';
+export type SignerKind = 'passkey' | 'guest' | 'injected';
 
 export interface Signer {
   kind: SignerKind;
@@ -118,7 +118,7 @@ export interface Call {
   value?: bigint;
 }
 
-/** Margin over the estimate. Monad bills the limit, so this is kept tight. */
+/** Margin over the estimate. */
 const GAS_MARGIN_NUM = 120n;
 const GAS_MARGIN_DEN = 100n;
 
@@ -144,12 +144,8 @@ export async function send(call: Call, s: Signer | null = current): Promise<TxRe
   const data = encodeFunctionData({
     abi: call.abi, functionName: call.functionName, args: call.args as unknown[] | undefined,
   });
-  // A Privy wallet's transactions are sponsored: the paymaster prices gas,
-  // and an estimate from a wallet holding no MON would fail anyway.
-  const gas = s.kind === 'privy'
-    ? undefined
-    : ((await client.estimateGas({ account: from, to: call.address, data, value: call.value })) * GAS_MARGIN_NUM)
-      / GAS_MARGIN_DEN;
+  const gas = ((await client.estimateGas({ account: from, to: call.address, data, value: call.value })) * GAS_MARGIN_NUM)
+    / GAS_MARGIN_DEN;
   const hash = await s.wallet.sendTransaction({
     account: s.account,
     chain: CHAIN,
@@ -157,6 +153,7 @@ export async function send(call: Call, s: Signer | null = current): Promise<TxRe
     data,
     value: call.value,
     gas,
+    ...(await arcFees()),
   });
   if (s === current) afterSign?.();
   const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 300, timeout: 60_000 });
@@ -164,10 +161,24 @@ export async function send(call: Call, s: Signer | null = current): Promise<TxRe
   return { hash, receipt };
 }
 
-/** A plain MON transfer, sized to exactly what a transfer costs. */
+/** Arc drops anything under a 20 gwei maxFeePerGas without a receipt; never go below 2× that. */
+const MIN_MAX_FEE = 40_000_000_000n;
+export async function arcFees(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint } | Record<string, never>> {
+  try {
+    const f = await publicClient().estimateFeesPerGas();
+    const maxFeePerGas = f.maxFeePerGas > MIN_MAX_FEE ? f.maxFeePerGas : MIN_MAX_FEE;
+    const tip = f.maxPriorityFeePerGas < maxFeePerGas ? f.maxPriorityFeePerGas : maxFeePerGas;
+    return { maxFeePerGas, maxPriorityFeePerGas: tip };
+  } catch {
+    return {};
+  }
+}
+
+/** A plain USDC transfer (native value), sized by estimate: Arc's native transfers are not always 21k. */
 export async function sendValue(to: Address, value: bigint, s: Signer | null = current): Promise<TxResult> {
   if (!s) throw new NoSignerError();
-  const hash = await s.wallet.sendTransaction({ account: s.account, chain: CHAIN, to, value, gas: 21_000n });
+  const gas = await publicClient().estimateGas({ account: s.address, to, value });
+  const hash = await s.wallet.sendTransaction({ account: s.account, chain: CHAIN, to, value, gas, ...(await arcFees()) });
   const receipt = await publicClient().waitForTransactionReceipt({ hash, pollingInterval: 300 });
   return { hash, receipt };
 }
@@ -182,6 +193,8 @@ const REASONS: Record<string, string> = {
   DifferentCoins: 'only two cards of the same fighter can merge',
   MaxLevel: 'that card is already level 10',
   WrongPayment: 'the payment did not match the price',
+  Paused: 'new matches are paused right now — open matches still settle',
+  TierClosed: 'that stake tier is not open on this network yet',
   CoinInactive: 'that fighter is not being minted right now',
   UnknownCoin: 'that fighter is not on the roster',
   StarterTaken: 'this account already has its starter deck',
@@ -217,7 +230,8 @@ export function readableChainError(e: unknown): string {
       if (name) return name;
     }
     const msg = e.shortMessage || e.message;
-    if (/insufficient funds/i.test(msg)) return 'not enough MON for gas — top up from the faucet';
+    if (/insufficient funds/i.test(msg)) return 'not enough USDC for gas — add USDC (testnet: faucet.circle.com)';
+    if (/blocklisted/i.test(msg)) return 'this address is blocklisted by USDC and cannot move funds';
     if (/rejected|denied/i.test(msg)) return 'you declined the request';
     return msg;
   }

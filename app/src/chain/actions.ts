@@ -1,12 +1,12 @@
 import {
-  decodeEventLog, encodeFunctionData, erc20Abi, maxUint256, parseSignature, zeroAddress, type Abi, type Address, type Hash, type Hex,
+  decodeEventLog, encodeFunctionData, erc20Abi, maxUint256, parseSignature, type Abi, type Address, type Hash, type Hex,
 } from 'viem';
 import { apiFetch } from '../lib/api';
 import { track } from '../lib/track';
 import {
   activeSigner, NoSignerError, readableChainError, send, type Signer, type TxResult,
 } from './account';
-import { CHAIN_ID, DEPLOYMENT, publicClient } from './provider';
+import { CHAIN_ID, DEPLOYMENT, USDC, publicClient } from './provider';
 import { ARENA_ABI, CARDS_ABI, fetchMatchById, type ChainMatch } from './read';
 
 /*
@@ -14,7 +14,7 @@ import { ARENA_ABI, CARDS_ABI, fetchMatchById, type ChainMatch } from './read';
  *
  * All of them go through `send` (chain/account.ts), which simulates first, so a
  * call that would revert fails here with the contract's own reason and costs
- * nothing — Monad bills the gas limit of a mined revert in full.
+ * nothing — a mined revert still pays its gas (in USDC, on Arc).
  */
 
 export { NoSignerError, readableChainError };
@@ -50,12 +50,13 @@ export async function ensureAllowance(token: Address, spender: Address, amount: 
 // ──────────────────────────────────────────────────────────────── cards
 
 /**
- * A fresh Pyth price update for one fighter, from the relay.
+ * A fresh signed price update for fighters, from the relay.
  *
- * Hermes has needed an API key since Aug 2026; the relay holds it and proxies,
- * so it never ships to a browser. The update is posted in the mint transaction
- * itself — Pyth is a pull oracle, and the on-chain price is only as fresh as
- * the last time somebody posted one.
+ * On Arc mainnet (and by default everywhere) the relay signs a live OKX /
+ * CoinGecko quote for the game's SignedPriceOracle; where the deployment uses
+ * Pyth (Arc testnet) it proxies Hermes so the API key never ships to a browser.
+ * Either way the update is posted in the mint transaction itself — a pull
+ * oracle is only as fresh as the last time somebody posted one.
  */
 export async function pythUpdate(coinIds: number[]): Promise<Hex[]> {
   const res = await apiFetch(`/api/pyth/update?coinIds=${coinIds.join(',')}`);
@@ -71,8 +72,8 @@ export interface MintResult extends TxResult {
   cardId: number;
 }
 
-/** Mint a fighter for MON (0.01) or for 250 $MEMPIRE. Either way the card records its Pyth price. */
-export async function mintCardTx(coinId: number, payWith: 'mon' | 'mempire' = 'mon'): Promise<MintResult> {
+/** Mint a fighter for USDC ($0.05) or for 250 $MEMPIRE. Either way the card records its live price. */
+export async function mintCardTx(coinId: number, payWith: 'usdc' | 'mempire' = 'usdc'): Promise<MintResult> {
   const d = dep();
   const update = await pythUpdate([coinId]);
   const client = publicClient();
@@ -80,7 +81,7 @@ export async function mintCardTx(coinId: number, payWith: 'mon' | 'mempire' = 'm
     address: d.cards, abi: CARDS_ABI, functionName: 'mintFee',
   }) as bigint;
   const pythFee = await client.readContract({
-    address: d.pyth,
+    address: d.oracle,
     abi: [{ type: 'function', name: 'getUpdateFee', stateMutability: 'view', inputs: [{ type: 'bytes[]', name: 'u' }], outputs: [{ type: 'uint256' }] }],
     functionName: 'getUpdateFee',
     args: [update],
@@ -90,7 +91,11 @@ export async function mintCardTx(coinId: number, payWith: 'mon' | 'mempire' = 'm
     await ensureAllowance(d.token, d.cards, 250n * 10n ** 18n);
     r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mintWithMempire', args: [coinId, update], value: pythFee });
   } else {
-    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mint', args: [coinId, update], value: mintFee + pythFee });
+    const s = activeSigner();
+    if (!s) throw new NoSignerError();
+    // The USDC fee rides in the mint tx as an EIP-2612 permit: one transaction, no approve.
+    const permit = await permitFor(s, d.cards, mintFee);
+    r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mint', args: [coinId, update, permit], value: pythFee });
   }
   const ev = eventArgs<{ cardId: bigint }>(r.receipt, CARDS_ABI, 'CardMinted');
   track('card.mint', { coinId, payWith });
@@ -138,7 +143,7 @@ export interface OpenedChest {
 /**
  * Open a chest: commit to the next block, wait for it, then reveal.
  *
- * Two transactions, a block apart — about a second on Monad. The contents are
+ * Two transactions, a block apart — under a second or two on Arc. The contents are
  * a function of a block hash that did not exist when the chest was committed,
  * and of the chest id, so the reveal is something anyone can re-derive.
  */
@@ -174,48 +179,42 @@ export async function openChestTx(chestId: number, favoredCoinIds: number[]): Pr
 
 // ──────────────────────────────────────────────────────────────── matches
 
-export type Currency = 'MON' | 'AUSD';
+/** The arena's one stake currency on Arc. */
+export type Currency = 'USDC';
 
-export const currencyAddress = (c: Currency): Address => (c === 'MON' ? zeroAddress : dep().ausd);
-
-export async function stakeFor(currency: Currency, tier: number): Promise<bigint> {
+export async function stakeFor(tier: number): Promise<bigint> {
   return await publicClient().readContract({
-    address: dep().arena, abi: ARENA_ABI, functionName: 'stakeFor', args: [currencyAddress(currency), tier],
+    address: dep().arena, abi: ARENA_ABI, functionName: 'stakeFor', args: [tier],
   }) as bigint;
 }
 
 interface PermitArg { deadline: bigint; v: number; r: Hex; s: Hex }
 const NO_PERMIT: PermitArg = { deadline: 0n, v: 0, r: `0x${'0'.repeat(64)}`, s: `0x${'0'.repeat(64)}` };
 
+const NONCES_ABI = [
+  { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address', name: 'o' }], outputs: [{ type: 'uint256' }] },
+] as const;
+
 /**
- * An EIP-2612 permit for the arena to pull an AUSD stake.
+ * An EIP-2612 permit for `spender` to pull `amount` of USDC.
  *
- * Signed, not sent: the permit rides inside the create/join transaction, so a
- * dollar stake is one transaction rather than approve-then-stake. If the token
- * already has enough allowance the permit is skipped.
+ * Signed, not sent: the permit rides inside the create/join/mint transaction,
+ * so a dollar stake is one transaction rather than approve-then-stake. Arc's
+ * USDC is Circle's FiatToken: EIP-712 domain name "USDC", version "2", this
+ * chain's id. With enough allowance already, the permit is skipped.
  */
-async function permitFor(s: Signer, amount: bigint): Promise<PermitArg> {
-  const d = dep();
+async function permitFor(s: Signer, spender: Address, amount: bigint): Promise<PermitArg> {
+  if (amount === 0n) return NO_PERMIT;
   const client = publicClient();
   const allowance = await client.readContract({
-    address: d.ausd, abi: erc20Abi, functionName: 'allowance', args: [s.address, d.arena],
+    address: USDC, abi: erc20Abi, functionName: 'allowance', args: [s.address, spender],
   });
   if (allowance >= amount) return NO_PERMIT;
-  const permitAbi = [
-    { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address', name: 'o' }], outputs: [{ type: 'uint256' }] },
-    { type: 'function', name: 'eip712Domain', stateMutability: 'view', inputs: [], outputs: [
-      { type: 'bytes1', name: 'fields' }, { type: 'string', name: 'name' }, { type: 'string', name: 'version' },
-      { type: 'uint256', name: 'chainId' }, { type: 'address', name: 'verifyingContract' },
-      { type: 'bytes32', name: 'salt' }, { type: 'uint256[]', name: 'extensions' }] },
-  ] as const;
-  const [nonce, domain] = await Promise.all([
-    client.readContract({ address: d.ausd, abi: permitAbi, functionName: 'nonces', args: [s.address] }),
-    client.readContract({ address: d.ausd, abi: permitAbi, functionName: 'eip712Domain' }),
-  ]);
+  const nonce = await client.readContract({ address: USDC, abi: NONCES_ABI, functionName: 'nonces', args: [s.address] });
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60);
   const signature = await s.wallet.signTypedData({
     account: s.account,
-    domain: { name: domain[1], version: domain[2], chainId: Number(domain[3]), verifyingContract: domain[4] },
+    domain: { name: 'USDC', version: '2', chainId: CHAIN_ID, verifyingContract: USDC },
     types: {
       Permit: [
         { name: 'owner', type: 'address' },
@@ -226,7 +225,7 @@ async function permitFor(s: Signer, amount: bigint): Promise<PermitArg> {
       ],
     },
     primaryType: 'Permit',
-    message: { owner: s.address, spender: d.arena, value: amount, nonce, deadline },
+    message: { owner: s.address, spender, value: amount, nonce, deadline },
   });
   const { r, s: sig, v, yParity } = parseSignature(signature);
   return { deadline, v: Number(v ?? BigInt(yParity + 27)), r, s: sig };
@@ -239,13 +238,13 @@ export async function createMatchTx(
   const s = activeSigner();
   if (!s) throw new NoSignerError();
   const d = dep();
-  const stake = await stakeFor(currency, tier);
-  const permit = currency === 'AUSD' ? await permitFor(s, stake) : NO_PERMIT;
-  const value = currency === 'MON' ? stake + sessionGas : sessionGas;
+  const stake = await stakeFor(tier);
+  const permit = await permitFor(s, d.arena, stake);
+  // msg.value is only the session key's gas float (native USDC); the stake moves by permit.
   const r = await send({
     address: d.arena, abi: ARENA_ABI, functionName: 'createMatch',
-    args: [tier, currencyAddress(currency), cardIds.map(BigInt), session, permit],
-    value,
+    args: [tier, cardIds.map(BigInt), session, permit],
+    value: sessionGas,
   }, s);
   const ev = eventArgs<{ matchId: bigint }>(r.receipt, ARENA_ABI, 'MatchCreated');
   if (!ev) throw new Error('match created but no MatchCreated event was found');
@@ -259,12 +258,11 @@ export async function joinMatchTx(
 ): Promise<{ hash: Hash }> {
   const s = activeSigner();
   if (!s) throw new NoSignerError();
-  const permit = m.currency === 'AUSD' ? await permitFor(s, m.stakeRaw) : NO_PERMIT;
-  const value = m.currency === 'MON' ? m.stakeRaw + sessionGas : sessionGas;
+  const permit = await permitFor(s, dep().arena, m.stakeRaw);
   const r = await send({
     address: dep().arena, abi: ARENA_ABI, functionName: 'joinMatch',
     args: [BigInt(m.id), cardIds.map(BigInt), session, permit],
-    value,
+    value: sessionGas,
   }, s);
   track('match.staked', { seat: 1, tier: m.tier, currency: m.currency });
   return { hash: r.hash };
@@ -286,8 +284,8 @@ export async function claimTimeoutTx(matchId: number): Promise<TxResult> {
   return send({ address: dep().arena, abi: ARENA_ABI, functionName: 'claimTimeout', args: [BigInt(matchId)] });
 }
 
-export async function withdrawOwedTx(currency: Currency): Promise<TxResult> {
-  return send({ address: dep().arena, abi: ARENA_ABI, functionName: 'withdraw', args: [currencyAddress(currency)] });
+export async function withdrawOwedTx(): Promise<TxResult> {
+  return send({ address: dep().arena, abi: ARENA_ABI, functionName: 'withdraw' });
 }
 
 /**
@@ -297,8 +295,8 @@ export async function withdrawOwedTx(currency: Currency): Promise<TxResult> {
  * call is the same every time — but it is not the same cost every time: the
  * first play of a match writes the play counters from zero, which is ~22k gas
  * more than every later one, and a fixed 48k limit reverted exactly that play
- * (and Monad bills a reverted transaction its whole limit). The estimate is one
- * round trip, and the play is never awaited by the battle.
+ * (and a reverted transaction still pays its gas). The estimate is one round
+ * trip, and the play is never awaited by the battle.
  */
 async function sendLogged(session: Signer, data: Hex, fallbackGas: bigint): Promise<Hash> {
   const to = dep().arena;

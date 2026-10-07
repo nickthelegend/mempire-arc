@@ -14,7 +14,7 @@ import {
   ASSET_KINDS, COINS, ineligibleReason, tickerOf,
   type AssetKind, type Coin,
 } from '../lib/coins';
-import { fmtMon, fmtUsd } from '../lib/format';
+import { fmtUsdc, fmtUsd } from '../lib/format';
 import { EASE_SNAP, usePulse } from '../lib/motion';
 import { revealSection } from '../lib/scroll';
 import { FEES, useCollection } from '../state/collection';
@@ -35,7 +35,7 @@ function CoinRow({ coin }: { coin: Coin }) {
   const chainMode = useChain((s) => s.mode);
   const chainBalances = useChain((s) => s.balances);
   const chainCards = useChain((s) => s.cards);
-  const chainSol = useChain((s) => s.solBalance);
+  const chainUsdc = useChain((s) => s.usdcBalance);
   const refreshSettled = useChain((s) => s.refreshSettled);
   const noteSignature = useChain((s) => s.noteSignature);
   const [minting, setMinting] = useState(false);
@@ -81,7 +81,7 @@ function CoinRow({ coin }: { coin: Coin }) {
   // the row shows instead is the market the fighter answers to today — its
   // price, its 24h move, and the modifier MarketMeta gave it this epoch.
   void chainBalances;
-  const affordable = onchain ? chainSol >= FEES.mintMon : wallet.mon >= FEES.mintMon;
+  const affordable = onchain ? chainUsdc >= FEES.mintUsdc : wallet.usdc >= FEES.mintUsdc;
   // No live quote → the relay can't sign a price → the contract would refuse.
   const live = coin.priceUsd > 0;
   // Holding the coin is no longer a requirement, on chain or here. The balance
@@ -201,7 +201,7 @@ function CoinRow({ coin }: { coin: Coin }) {
               if (onchain) void mintOnchain();
             }}
             disabled={minting || !affordable || !onchain || !live}
-            title={!live ? 'No live price for this coin right now — a card is minted only at a fresh price' : affordable ? undefined : `needs ${fmtMon(FEES.mintMon)}`}
+            title={!live ? 'No live price for this coin right now — a card is minted only at a fresh price' : affordable ? undefined : `needs ${fmtUsdc(FEES.mintUsdc)}`}
             className="btn-3d"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -221,7 +221,7 @@ function CoinRow({ coin }: { coin: Coin }) {
             }}
           >
             {minting && <Spinner />}
-            {minting ? 'Minting' : !live ? 'No live price' : affordable ? `Mint · ${fmtMon(FEES.mintMon)}` : 'Need MON'}
+            {minting ? 'Minting' : !live ? 'No live price' : affordable ? `Mint · ${fmtUsdc(FEES.mintUsdc)}` : 'Need USDC'}
           </button>
         )}
       </div>
@@ -410,7 +410,7 @@ export function Cards() {
 
       <section aria-label="Your bags" ref={bagsRef} style={{ scrollMarginTop: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <span className="label">Your bags · mint fee {fmtMon(FEES.mintMon)}</span>
+          <span className="label">Your bags · mint fee {fmtUsdc(FEES.mintUsdc)}</span>
           <ChainBadge compact />
         </div>
 

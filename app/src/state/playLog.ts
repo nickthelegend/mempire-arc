@@ -5,11 +5,11 @@ import { publicClient } from '../chain/provider';
 import { CLAIM_RESERVE_WEI, sessionFor } from '../chain/session';
 
 /*
- * The match, written to Monad while it is played.
+ * The match, written to Arc while it is played.
  *
  * Every card drop is a transaction from the seat's session key to
  * `MempireArena.play`, sent the moment the card leaves the player's hand and
- * never awaited by the battle. Monad's 400 ms blocks mean it is usually in a
+ * never awaited by the battle. Arc's sub-second finality means it is usually in a
  * block before the unit has crossed the bridge; the badge shows how long that
  * actually took, measured from send to receipt, because "fast" is a claim and a
  * number is evidence.
@@ -98,11 +98,8 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
     begin: async (matchId) => {
       const session = sessionFor(matchId);
       if (!session) { set({ phase: 'off' }); return; }
-      // A Privy session signer's calls are sponsored: there is no float to ration.
       const [balance, gasPrice] = await Promise.all([
-        session.kind === 'privy'
-          ? Promise.resolve(10n ** 24n)
-          : publicClient().getBalance({ address: session.address }).catch(() => 0n),
+        publicClient().getBalance({ address: session.address }).catch(() => 0n),
         publicClient().getGasPrice().catch(() => FALLBACK_GAS_PRICE),
       ]);
       // 10% over the quoted price, as the sender pads it.

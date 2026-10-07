@@ -3,18 +3,18 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoneyRow, Pill } from '../components/ui';
 import { RankChip } from '../components/ClanBits';
-import { fmtMon, fmtStake, shortAddr } from '../lib/format';
+import { fmtUsdc, fmtStake, shortAddr } from '../lib/format';
 import { loadLeaderboard, type LeaderRow } from '../lib/persist';
 import { useCollection } from '../state/collection';
 import { useMatch } from '../state/match';
 import { useWallet } from '../state/wallet';
 import { useChain } from '../state/chain';
-import { LiveOnMonad } from '../components/LiveOnMonad';
+import { LiveOnArc } from '../components/LiveOnArc';
 import { fetchStrandedMatches, type ChainMatch } from '../chain/read';
 import { useEscrow } from '../state/escrow';
 
 /**
- * Top players by net MON / AUSD, from the persistence API.
+ * Top players by net USDC won, chain-verified by the relay.
  *
  * Renders nothing when the API is down or the board is empty — a leaderboard
  * with no rows is dead weight, and the rest of the screen already works
@@ -34,7 +34,7 @@ function Leaderboard({ me }: { me: string }) {
        * ladder. A row earns its place by having won something or moved some
        * money; nothing legitimate is excluded by that, because a real player with
        * zero wins and zero net is also ranked nowhere. */
-      setRows(r.filter((row) => row.wins > 0 || (row.netAusd ?? 0) !== 0 || (row.netMon ?? 0) !== 0));
+      setRows(r.filter((row) => row.wins > 0 || (row.netUsdc ?? 0) !== 0));
     });
     return () => { cancelled = true; };
   }, []);
@@ -76,11 +76,9 @@ function Leaderboard({ me }: { me: string }) {
               </span>
               <span
                 className="money"
-                style={{ fontSize: 13, flexShrink: 0, color: (r.netAusd || r.netMon || 0) >= 0 ? 'var(--gold)' : 'var(--red)' }}
+                style={{ fontSize: 13, flexShrink: 0, color: (r.netUsdc ?? 0) >= 0 ? 'var(--gold)' : 'var(--red)' }}
               >
-                {r.netAusd
-                  ? `${r.netAusd >= 0 ? '+' : '−'}${fmtStake(Math.abs(r.netAusd), 'AUSD')}`
-                  : `${(r.netMon ?? 0) >= 0 ? '+' : '−'}${fmtMon(Math.abs(r.netMon ?? 0))}`}
+                {`${(r.netUsdc ?? 0) >= 0 ? '+' : '−'}${fmtUsdc(Math.abs(r.netUsdc ?? 0))}`}
               </span>
             </div>
           );
@@ -93,7 +91,6 @@ function Leaderboard({ me }: { me: string }) {
 export function Empire() {
   const nav = useNavigate();
   const wallet = useWallet();
-  const ausd = useChain((s) => s.ausdBalance);
   const mempire = useChain((s) => s.mempireBalance);
   const openPicker = useWallet((s) => s.openPicker);
   const history = useMatch((s) => s.history);
@@ -106,19 +103,15 @@ export function Empire() {
    * exactly this: an unstaked match reports the pot it *would* have paid, and
    * summing those printed a "Won" figure that never existed — the same
    * class of lie the result card was cured of. Rating counts all matches;
-   * money counts escrowed ones, each in the currency it was staked in.
+   * money counts escrowed ones (all USDC on Arc).
    */
   const sumBy = (pick: (h: (typeof history)[number]) => number) => {
-    const t = { MON: 0, AUSD: 0 };
-    for (const h of history) if (h.escrowed) t[h.currency ?? 'MON'] += pick(h);
-    return t;
+    let t = 0;
+    for (const h of history) if (h.escrowed) t += pick(h);
+    return fmtUsdc(t);
   };
-  const both = (t: { MON: number; AUSD: number }) => {
-    const parts = [t.AUSD ? fmtStake(t.AUSD, 'AUSD') : '', t.MON ? fmtMon(t.MON) : ''].filter(Boolean);
-    return parts.length ? parts.join(' · ') : fmtStake(0, 'AUSD');
-  };
-  const earned = both(sumBy((h) => h.payoutSol));
-  const raked = both(sumBy((h) => h.rakeSol));
+  const earned = sumBy((h) => h.payoutSol);
+  const raked = sumBy((h) => h.rakeSol);
 
   return (
     <div style={{ padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -147,8 +140,8 @@ export function Empire() {
       {wallet.connected && (
         <>
           <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <MoneyRow stack label="MON" value={fmtMon(wallet.mon)} />
-            <MoneyRow stack label="AUSD" value={fmtStake(ausd, 'AUSD')} />
+            <MoneyRow stack label="USDC" value={fmtUsdc(wallet.usdc)} />
+            <MoneyRow stack label="Gas" value="USDC · same balance" />
             <MoneyRow stack label="$MEMPIRE" value={Math.floor(mempire).toLocaleString()} />
             <MoneyRow stack label="Won" value={earned} />
           </section>
@@ -203,13 +196,13 @@ export function Empire() {
                       {h.draw ? 'DRAW' : h.won ? 'WON' : 'REKT'}
                     </span>
                     <span className="fine" style={{ fontSize: 12 }}>
-                      pot {fmtStake(h.potSol, h.currency ?? 'MON')} · {h.hashes} commits
+                      pot {fmtStake(h.potSol, h.currency ?? 'USDC')} · {h.hashes} commits
                     </span>
                     <span className="money" style={{ marginLeft: 'auto', color: !h.escrowed ? 'var(--dim)' : h.payoutSol > 0 ? 'var(--gold)' : 'var(--red)' }}>
                       {/* An unescrowed match moved nothing; showing ±SOL for it
                           would restate the number the result card already
                           disclaims. */}
-                      {!h.escrowed ? 'rating only' : h.payoutSol > 0 ? `+${fmtStake(h.payoutSol, h.currency ?? 'MON')}` : `−${fmtStake(h.potSol / 2, h.currency ?? 'MON')}`}
+                      {!h.escrowed ? 'rating only' : h.payoutSol > 0 ? `+${fmtStake(h.payoutSol, h.currency ?? 'USDC')}` : `−${fmtStake(h.potSol / 2, h.currency ?? 'USDC')}`}
                     </span>
                   </div>
                 ))}
@@ -217,7 +210,7 @@ export function Empire() {
             )}
           </section>
 
-          <LiveOnMonad />
+          <LiveOnArc />
 
           <Leaderboard me={wallet.address} />
 
@@ -225,7 +218,7 @@ export function Empire() {
 
           <p className="fine" style={{ fontSize: 12 }}>
             {/* A guest's browser key signs its own transactions, so on testnet
-                mints and stakes spend the same real MON a connected wallet
+                mints and stakes spend the same real USDC a connected wallet
                 would. On mainnet a guest cannot sign at all — the browser key
                 is testnet-only by policy. */}
             {wallet.isGuest
@@ -235,7 +228,7 @@ export function Empire() {
               : wallet.kind === 'passkey'
                 ? 'Passkey account — derived from your passkey, never stored. Same account on any device your passkey syncs to. '
                 : `${NETWORK_LABEL} — balances are read from the chain and staked matches escrow for real. `}
-            Mint fee 0.01 MON · rake 10% of the pot, 5% on a draw.
+            Mint fee $0.05 USDC · rake 10% of the pot, 5% on a draw · gas paid in USDC.
           </p>
         </>
       )}

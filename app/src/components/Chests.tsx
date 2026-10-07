@@ -18,7 +18,7 @@ import { useWallet } from '../state/wallet';
  *
  * Signed in, chests live on chain: a staked win's chest is granted by the arena
  * in the settling transaction, its timer is a timestamp in `MempireCards`, and
- * opening it commits to the hash of the next Monad block and then reveals —
+ * opening it commits to the hash of the next Arc block and then reveals —
  * the cards it holds are minted as real ERC-721s. Playing as a guest without a
  * deployment, the rail keeps the local chests it always had, labelled local.
  */
@@ -342,7 +342,7 @@ function Slot({ chest, onOpened, onSkipRequest, onBuyRequest }: {
             a claim about fairness this build has not earned there. */}
         {chest.source === 'chain' && (
           <span
-            title="On chain — the timer is in the contract, and opening commits to the next Monad block's hash"
+            title="On chain — the timer is in the contract, and opening commits to the next Arc block's hash"
             aria-label="On-chain chest"
             style={{
               position: 'absolute', right: -4, bottom: -2,

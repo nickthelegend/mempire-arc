@@ -7,7 +7,7 @@ import { apiPost } from './api';
  *
  * Most of what the funnel wants to know happens *on chain*, driven from here:
  * a card is minted, a stake is escrowed. The server never sees those — they go
- * straight from the browser to Monad — so a purely server-side trail would
+ * straight from the browser to Arc — so a purely server-side trail would
  * have a hole exactly where the interesting steps are. The dashboard shipped
  * with a five-step funnel of which three steps nothing emitted, which is worse
  * than four honest steps.
