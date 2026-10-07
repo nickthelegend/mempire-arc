@@ -126,7 +126,7 @@ function ConnectHero() {
         Every coin is a fighter.
       </p>
       <p style={{ color: 'var(--dim)', fontSize: 14, maxWidth: 300, margin: '-8px auto 0' }}>
-        Coins, stocks and crypto as fighters. Level them up by winning, and battle for the pot.
+        Crypto, gold and FX as fighters, priced by Chainlink on Arc. Level them up by winning, and battle for a USDC pot.
       </p>
       <div style={{ padding: '0 12px', marginTop: 6 }}>
         <Pill onClick={openPicker} tone="gold" style={{ fontSize: 19 }}>Play now</Pill>

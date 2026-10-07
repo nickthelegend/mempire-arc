@@ -5,7 +5,7 @@
 #     Feeds, Chainlink's real CCIP router, Circle's CCTP and Gateway contracts are all there
 #   - our contracts deployed with real signed transactions (DeployLocal, dev keys at mnemonic index 7100+)
 #   - MongoDB on :27019 if mongod is installed (else the relay's in-memory store)
-#   - the relay on :8799 (keeper posting the Chainlink-feed meta, ccip-watch), app on :5181
+#   - the relay on :8799 (keeper posting the Chainlink-feed meta, ccip-watch), app on :5191
 #
 #   ARC_ANVIL=…/arc-anvil ARC_FORGE=…/forge ARC_CAST=…/cast ./scripts/local-up.sh
 #   ./scripts/local-up.sh --no-relay     # chain + contracts only
@@ -52,17 +52,17 @@ if command -v mongod >/dev/null; then
 fi
 DB="mempire_local_$(jq -r .startBlock "$ROOT/shared/deployments/31337.json")"
 if ! lsof -iTCP:8799 -sTCP:LISTEN >/dev/null 2>&1; then
-  (cd "$ROOT/server" && exec >/dev/null && CHAIN_ID=31337 RPC_URL=$RPC PORT=8799 PUBLIC_APP_URL=http://localhost:5181 \
+  (cd "$ROOT/server" && exec >/dev/null && CHAIN_ID=31337 RPC_URL=$RPC PORT=8799 PUBLIC_APP_URL=http://localhost:5191 \
     MONGODB_URI="$MONGO" MONGODB_DB="$DB" RELAYER_PRIVATE_KEY="$(devkey 1)" META_KEEPER_EVERY=1 \
     exec nohup node index.js >"$RUN/relay.log" 2>&1 </dev/null) &
   echo $! >"$RUN/relay.pid"
   for _ in $(seq 240); do curl -sf localhost:8799/api/health >/dev/null && break; sleep 0.5; done
 fi
 echo "relay  http://localhost:8799"
-if ! lsof -iTCP:5181 -sTCP:LISTEN >/dev/null 2>&1; then
+if ! lsof -iTCP:5191 -sTCP:LISTEN >/dev/null 2>&1; then
   (cd "$ROOT/app" && exec >/dev/null && VITE_CHAIN_ID=31337 VITE_API_URL=http://localhost:8799 VITE_RPC_URL=$RPC \
-    exec nohup node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5181 >"$RUN/vite.log" 2>&1 </dev/null) &
+    exec nohup node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5191 >"$RUN/vite.log" 2>&1 </dev/null) &
   echo $! >"$RUN/vite.pid"
-  for _ in $(seq 120); do curl -sf localhost:5181 >/dev/null && break; sleep 0.5; done
+  for _ in $(seq 120); do curl -sf localhost:5191 >/dev/null && break; sleep 0.5; done
 fi
-echo "app    http://localhost:5181"
+echo "app    http://localhost:5191"

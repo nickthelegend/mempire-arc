@@ -25,8 +25,7 @@ export { NoSignerError, readableChainError };
  * arena, and the Memo event tags the USDC movement with the match id —
  * memoId = keccak256("mempire:match:<id>") — so any explorer, wallet or
  * accountant can reconcile a stake or a payout with the match it belongs to.
- * Memo needs an EOA caller; every Mempire signer is one. A chain without the
- * predeploy (none known) falls back to the plain call.
+ * Memo needs an EOA caller; every Mempire signer is one.
  */
 const MEMO: Address = '0x5294E9927c3306DcBaDb03fe70b92e01cCede505';
 const MEMO_ABI = [{
@@ -35,17 +34,40 @@ const MEMO_ABI = [{
   outputs: [],
 }] as const satisfies Abi;
 let memoLive: boolean | null = null;
+
+/*
+ * Is Arc's Memo path live here? Probed once with a harmless call through it (a
+ * zero-value USDC transfer to oneself). Real Arc nodes run the CallFrom
+ * precompile Memo relies on; a local arc-anvil fork's RPC does not (Memo
+ * reverts with empty data there), so the app falls back to plain calls rather
+ * than failing the stake.
+ */
+async function memoWorks(from: Address): Promise<boolean> {
+  if (memoLive !== null) return memoLive;
+  try {
+    const code = await publicClient().getCode({ address: MEMO });
+    if (!code || code === '0x') return (memoLive = false);
+    const inner = encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [from, 0n] });
+    await publicClient().simulateContract({
+      address: MEMO, abi: MEMO_ABI as unknown as Abi, functionName: 'memo', args: [USDC, inner, matchMemoId(0), '0x'], account: from,
+    });
+    memoLive = true;
+  } catch {
+    memoLive = false;
+  }
+  return memoLive;
+}
 export const matchMemoId = (matchId: number | bigint): Hex => keccak256(toHex(`mempire:match:${matchId}`));
 
 /** Send `call` wrapped in an Arc Memo tagged with the match. Value-less calls only (Memo forwards no value). */
 async function sendTagged(call: Call, matchId: number | bigint, note: string, by?: Signer | null): Promise<TxResult> {
-  memoLive ??= ((await publicClient().getCode({ address: MEMO }).catch(() => undefined)) ?? '0x') !== '0x';
-  if (!memoLive || call.value) return send(call, by ?? activeSigner());
+  const signer = by ?? activeSigner();
+  if (call.value || !signer || !(await memoWorks(signer.address))) return send(call, signer);
   const data = encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args as unknown[] });
   return send({
     address: MEMO, abi: MEMO_ABI as unknown as Abi, functionName: 'memo',
     args: [call.address, data, matchMemoId(matchId), toHex(note)],
-  }, by ?? activeSigner());
+  }, signer);
 }
 export type { TxResult };
 

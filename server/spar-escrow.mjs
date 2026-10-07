@@ -23,7 +23,7 @@
 import WebSocket from 'ws';
 import { createWalletClient, http, maxUint256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { abis, chain, deployment, feeParams, publicClient, sameAddress, RPC_URL, ZERO_ADDRESS } from './chain.js';
+import { abis, chain, coinById, deployment, feeParams, publicClient, sameAddress, RPC_URL, ZERO_ADDRESS } from './chain.js';
 import { signed } from './test-util.mjs';
 
 const WS = process.env.WS ?? 'ws://localhost:8787/ws';
@@ -62,14 +62,19 @@ if (deck.length < 8) {
 }
 console.log(`spar-escrow: ${me.address} deck ready`, deck.map((d) => d.id).join(','));
 
-const relayDeck = deck.map((d, i) => ({
-  coinId: Number(d.card.coinId), name: `S${i}`, archetype: Number(d.card.archetype), level: Number(d.card.level),
-}));
+// The client keys fighters by their feed id (the roster's `feedId`), and the
+// opponent's relayed deck is checked against the cards the arena locked.
+const relayDeck = deck.map((d) => {
+  const c = coinById.get(Number(d.card.coinId));
+  return { coinId: c.feedId.toLowerCase(), name: c.ticker, archetype: Number(d.card.archetype), level: Number(d.card.level) };
+});
 
 const ws = new WebSocket(WS);
 let opponent = null;
 
 ws.on('open', async () => {
+  // SPAR_DELAY_MS: queue a little later, so a browser that queued first gets seat 0 (and opens the escrow).
+  await new Promise((r) => { setTimeout(r, Number(process.env.SPAR_DELAY_MS ?? 0)); });
   console.log(`spar-escrow: queueing tier ${TIER}, ${CURRENCY}`);
   ws.send(JSON.stringify({
     t: 'queue', ...(await signed(me, 'queue')), tier: TIER, currency: CURRENCY, deck: relayDeck,
