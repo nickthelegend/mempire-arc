@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { LeagueBadge, TrophyDelta } from '../components/LeagueBadge';
 import { EscrowBadge } from '../components/EscrowBadge';
+import { AgentRating } from '../components/AgentRating';
 import { ArcLogBadge } from '../components/ArcLogBadge';
 import { Commentary, OpponentBrainBadge } from '../components/Commentary';
 import { CardArtWell } from '../components/CardFrame';
@@ -43,7 +44,7 @@ function GoldBurst() {
 }
 
 function ResultOverlay() {
-  const { result, stakeSol, currency, dismiss, practice, soloVsBot } = useMatch();
+  const { result, stakeSol, currency, dismiss, practice, soloVsBot, opponentName, mode } = useMatch();
   const fmtUsdc = (n: number) => fmtStake(n, currency);
   const escrowPhase = useEscrow((s) => s.phase);
   const chainChests = useChain((s) => s.chests);
@@ -210,6 +211,9 @@ function ResultOverlay() {
             </span>
           </span>
         </div>
+      )}
+      {mode === 'bot' && opponentName === 'Kimi (AI)' && (
+        <AgentRating aiWon={!result.won && !result.draw} matchRef={`ai:${Date.now()}`} />
       )}
       <p className="fine" style={{ fontSize: 12 }}>
         {result.hashes} state hashes committed · settled by final-state signature

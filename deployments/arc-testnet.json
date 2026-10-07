@@ -1,0 +1,5 @@
+{
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "status": "not deployed yet: the shared deployer 0x0648aDF1967692A0c991d7715b0b588452321FBd holds 0 USDC on Arc testnet. Fund it (faucet.circle.com), then sh scripts/deploy.sh testnet replaces this file with addresses, gas and tx hashes"
+}

@@ -1,0 +1,5 @@
+{
+  "network": "arc-mainnet",
+  "chainId": 5042,
+  "status": "not deployed yet (phase gate: testnet only). CONFIRM_MAINNET=yes sh scripts/deploy.sh mainnet (see MAINNET.md) replaces this file with the addresses"
+}

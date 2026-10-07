@@ -10,6 +10,7 @@ import { useMatch } from '../state/match';
 import { useWallet } from '../state/wallet';
 import { useChain } from '../state/chain';
 import { LiveOnArc } from '../components/LiveOnArc';
+import { ArcStack } from '../components/ArcStack';
 import { fetchStrandedMatches, type ChainMatch } from '../chain/read';
 import { useEscrow } from '../state/escrow';
 
@@ -210,6 +211,7 @@ export function Empire() {
             )}
           </section>
 
+          <ArcStack />
           <LiveOnArc />
 
           <Leaderboard me={wallet.address} />

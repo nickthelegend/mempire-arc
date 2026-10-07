@@ -21,6 +21,8 @@ import { ccipWatchStatus, startCcipWatch } from './ccip-watch.js';
 import { registerLockerRoutes } from './locker.js';
 import { createMemoryDb } from './memstore.js';
 import { registerMarketRoutes } from './market.js';
+import { registerGatewayRoutes } from './gateway.js';
+import { registerAgentRoutes } from './agent.js';
 import { registerAiRoutes } from './ai.js';
 import { registerNftRoutes } from './nft.js';
 import { registerOnboardRoutes } from './onboard.js';
@@ -150,6 +152,8 @@ const NET_FIELD = { USDC: 'netUsdc' };
  */
 registerMarketRoutes(app);
 registerNftRoutes(app, readGate);
+registerGatewayRoutes(app, readGate);
+registerAgentRoutes(app, readGate);
 registerAiRoutes(app);
 
 app.get('/api/health', async (_req, res) => {

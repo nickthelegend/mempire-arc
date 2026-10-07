@@ -3,7 +3,7 @@
 # and only if that PID still runs what we started: after a reboot a stale PID
 # file can name an unrelated process.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-expect() { case $1 in relay) echo "node index.js";; anvil) echo "anvil";; mongo) echo "mongod";; vite) echo "vite";; esac; }
+expect() { case $1 in relay) echo "node index.js";; anvil) echo "anvil --network arc";; mongo) echo "mongod";; vite) echo "vite";; esac; }
 for p in relay anvil mongo vite; do
   f="$ROOT/.local/$p.pid"
   [ -f "$f" ] || continue
