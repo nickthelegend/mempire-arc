@@ -25,10 +25,11 @@ contract MempireRemoteEntry {
 
     /// Arc's CCTP domain.
     uint32 public constant ARC_DOMAIN = 26;
-    /// Gas for the gateway's work on Arc: create/join locks eight cards and
-    /// moves a stake (~450k measured in tests); cash-out ~200k. Unused gas is
-    /// not refunded by CCIP, so this is a measured bound, not a guess.
-    uint256 public constant ENTER_GAS = 700_000;
+    /// Gas for the gateway's work on Arc: a create locks eight cards and moves a
+    /// stake — 249,881 gas measured on an Arc mainnet fork through the real
+    /// router address (test/fork) — so 450k leaves headroom; a cash-out (permit,
+    /// pull, CCTP burn) fits in 300k. Unused gas is not refunded by CCIP.
+    uint256 public constant ENTER_GAS = 450_000;
     uint256 public constant CASH_OUT_GAS = 300_000;
 
     IRouterClient public immutable router;
