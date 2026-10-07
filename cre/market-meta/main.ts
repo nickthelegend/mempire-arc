@@ -1,10 +1,11 @@
 /**
  * Mempire — "the market is the meta".
  *
- * Every epoch this workflow reads the 24h price change of every fighter in
- * the roster, agrees on it across the DON, turns each change into a bounded
- * strength modifier and writes ONE report to MarketMeta on Arc testnet
- * (CRE chain `arc-testnet`, chain id 5042002):
+ * Every epoch this workflow reads the daily price change of every fighter in
+ * the roster (20 fighters, one per Chainlink Data Feed on Arc mainnet), agrees
+ * on it across the DON, turns each change into a bounded strength modifier and
+ * writes ONE report to MarketMeta on Arc testnet (CRE chain `arc-testnet`,
+ * chain id 5042002):
  *
  *   abi.encode(uint64 epoch, uint16[] coinIds, int16[] bps)
  *
@@ -14,9 +15,15 @@
  *
  * The math, the clock and the encoding live in ./meta.ts (unit tested).
  *
- * Arc mainnet is not a CRE chain. There, MarketMeta's meta is written by
- * `MarketMeta.postFromOracle` (signed-oracle spot-vs-EMA momentum, posted by
- * the relay's keeper), so this workflow refuses `arc-mainnet` at config time.
+ * Sources (each fetched by every node, then median-aggregated per coin):
+ *   - CoinGecko 24h change for every fighter with a CoinGecko id (crypto,
+ *     DeFi, PAXG);
+ *   - Frankfurter (ECB reference rates, keyless) for the fiat fighters, latest
+ *     fixing vs yesterday's, inverted because the feeds are XXX / USD.
+ *
+ * Arc mainnet is not a CRE chain. There, MarketMeta computes the meta itself
+ * from the Chainlink Data Feeds (`MarketMeta.postFromFeeds`), so this workflow
+ * refuses `arc-mainnet` at config time.
  */
 import {
 	bytesToHex,
@@ -49,8 +56,10 @@ import {
 	coingeckoUrl,
 	encodeMetaReport,
 	epochFor,
-	hermesUrl,
-	pythBps,
+	frankfurterUrl,
+	fxBps,
+	isFiat,
+	utcDate,
 	zeroBps,
 } from './meta'
 import { ROSTER, type RosterCoin } from './roster'
@@ -66,7 +75,7 @@ import { ROSTER, type RosterCoin } from './roster'
  */
 export const UNSUPPORTED_CHAINS: Readonly<Record<string, string>> = {
 	'arc-mainnet':
-		'CRE does not serve Arc mainnet: there MarketMeta is written by postFromOracle (signed-oracle momentum), not by this workflow',
+		'CRE does not serve Arc mainnet: there MarketMeta computes the meta on chain from Chainlink Data Feeds (postFromFeeds), not from this workflow',
 }
 
 export const configSchema = z.object({
@@ -82,10 +91,10 @@ export const configSchema = z.object({
 	marketMetaAddress: z.string(),
 	/** Gas limit for the forwarder → MarketMeta.onReport transaction (decimal string). */
 	gasLimit: z.string().regex(/^\d+$/),
+	/** CoinGecko /simple/price endpoint (keyless). */
 	coingeckoBaseUrl: z.string().url(),
-	pythHermesUrl: z.string().url(),
-	/** A Pyth "24h" pair spanning less than this is treated as flat (closed market). */
-	pythMinWindowSeconds: z.number().int().nonnegative(),
+	/** Frankfurter API root, e.g. https://api.frankfurter.dev/v1 (keyless; ECB rates). */
+	frankfurterBaseUrl: z.string().url(),
 	/** Optional on-demand trigger. authorizedKeys are EVM addresses allowed to fire it. */
 	httpTrigger: z.object({
 		enabled: z.boolean(),
@@ -94,9 +103,6 @@ export const configSchema = z.object({
 })
 
 export type Config = z.infer<typeof configSchema>
-
-/** Secret id declared in ../secrets.yaml. Optional: without it stocks are flat. */
-export const PYTH_SECRET_ID = 'PYTH_API_KEY'
 
 /** ReceiverContractExecutionStatus.REVERTED (not re-exported by the SDK root). */
 const RECEIVER_REVERTED = 1
@@ -111,7 +117,7 @@ const MARKET_META_ABI = parseAbi(['function currentEpoch() view returns (uint64)
  * One median per coin. Every node fetches the source itself and turns each
  * change into an integer bps; the DON then takes the median of each coin's
  * field independently. Why median-by-field rather than identical consensus
- * on the whole array: CoinGecko and Hermes answers drift between nodes (edge
+ * on the whole array: CoinGecko and FX answers drift between nodes (edge
  * caches, a print landing between two requests), so a byte-identical array
  * would routinely fail to reach quorum, while a per-coin median tolerates up
  * to f faulty or lagging nodes and still lands on an honest value. The curve
@@ -138,62 +144,58 @@ const fetchCoingecko = (sendRequester: HTTPSendRequester, url: string, coins: re
 	return { ...bps, [MISSING_FIELD]: missing.length }
 }
 
-const fetchPyth = (
+/** Field set to 1 when both FX fixings are the same (weekend / holiday / not yet published). */
+const SAME_FIXING_FIELD = 'sameFixing'
+
+const fetchFx = (
 	sendRequester: HTTPSendRequester,
 	latestUrl: string,
 	pastUrl: string,
-	apiKey: string,
 	coins: readonly RosterCoin[],
-	minWindowSeconds: number,
 ): BpsByKey => {
-	const headers = { accept: 'application/json', authorization: `Bearer ${apiKey}` }
+	const headers = { accept: 'application/json' }
 	const latest = sendRequester.sendRequest({ url: latestUrl, method: 'GET', headers }).result()
-	if (!ok(latest)) throw new Error(`Hermes latest HTTP ${latest.statusCode}`)
+	if (!ok(latest)) throw new Error(`Frankfurter latest HTTP ${latest.statusCode}`)
 	const past = sendRequester.sendRequest({ url: pastUrl, method: 'GET', headers }).result()
-	if (!ok(past)) throw new Error(`Hermes 24h-ago HTTP ${past.statusCode}`)
-	const { bps, flat } = pythBps(json(latest), json(past), coins, minWindowSeconds)
-	return { ...bps, [MISSING_FIELD]: flat.length }
+	if (!ok(past)) throw new Error(`Frankfurter previous-day HTTP ${past.statusCode}`)
+	const { bps, missing, sameFixing } = fxBps(json(latest), json(past), coins)
+	return { ...bps, [MISSING_FIELD]: missing.length, [SAME_FIXING_FIELD]: sameFixing ? 1 : 0 }
 }
 
 // ---------------------------------------------------------------------------
 // DON-mode orchestration
 // ---------------------------------------------------------------------------
 
-const readPythKey = (runtime: Runtime<Config>): string => {
-	try {
-		return runtime.getSecret({ id: PYTH_SECRET_ID }).result().value.trim()
-	} catch {
-		return ''
-	}
-}
-
-const stockBps = (runtime: Runtime<Config>, http: HTTPClient, stocks: readonly RosterCoin[], nowMs: number): BpsByKey => {
-	if (stocks.length === 0) return {}
-	const apiKey = readPythKey(runtime)
-	if (!apiKey) {
-		runtime.log(`${PYTH_SECRET_ID} not configured: ${stocks.length} stocks get 0 bps this epoch`)
-		return zeroBps(stocks)
-	}
-	const { pythHermesUrl, pythMinWindowSeconds } = runtime.config
-	// The "24h ago" timestamp is computed once in DON mode (consensus time) so
-	// every node asks Hermes the identical question.
-	const pastTs = Math.floor(nowMs / 1000) - 86_400
+/**
+ * Fiat fighters: Frankfurter latest vs the fixing in force on yesterday's UTC
+ * date. Never fatal: if the source fails, every fiat fighter is 0 this epoch
+ * (and the log says so) — never an invented number.
+ */
+const fiatBps = (runtime: Runtime<Config>, http: HTTPClient, fiat: readonly RosterCoin[], nowMs: number): BpsByKey => {
+	if (fiat.length === 0) return {}
+	const base = runtime.config.frankfurterBaseUrl
+	// Dates come from DON consensus time, so every node asks the identical question.
+	const pastDate = utcDate(nowMs - 86_400_000)
 	try {
 		const agg = http
-			.sendRequest(runtime, fetchPyth, medianPerCoin(stocks, [MISSING_FIELD]))(
-				hermesUrl(pythHermesUrl, 'latest', stocks),
-				hermesUrl(pythHermesUrl, pastTs, stocks),
-				apiKey,
-				stocks,
-				pythMinWindowSeconds,
+			.sendRequest(runtime, fetchFx, medianPerCoin(fiat, [MISSING_FIELD, SAME_FIXING_FIELD]))(
+				frankfurterUrl(base, 'latest', fiat),
+				frankfurterUrl(base, pastDate, fiat),
+				fiat,
 			)
 			.result()
-		const { [MISSING_FIELD]: flat, ...bps } = agg
-		if (flat) runtime.log(`Pyth: ${Math.round(flat)} stock(s) flat (no usable 24h window, e.g. market closed)`)
+		const { [MISSING_FIELD]: missing, [SAME_FIXING_FIELD]: same, ...bps } = agg
+		if (same >= 0.5) {
+			runtime.log(
+				`FX: latest ECB fixing is the one already in force on ${pastDate} (weekend/holiday/today's not yet published): ${fiat.length} fiat fighters at 0 bps`,
+			)
+		} else if (missing) {
+			runtime.log(`FX: ${Math.round(missing)} fiat fighter(s) unpriced, written as 0 bps`)
+		}
 		return bps
 	} catch (e) {
-		runtime.log(`Pyth unavailable (${(e as Error).message}): stocks get 0 bps this epoch`)
-		return zeroBps(stocks)
+		runtime.log(`FX unavailable (${(e as Error).message}): ${fiat.length} fiat fighters get 0 bps this epoch`)
+		return zeroBps(fiat)
 	}
 }
 
@@ -224,26 +226,26 @@ export const runMarketMeta = (runtime: Runtime<Config>, source: string): string 
 	runtime.log(`market-meta (${source}) epoch ${epoch} (${cfg.epochSeconds}s epochs)`)
 
 	const http = new HTTPClient()
-	const cryptoCoins = ROSTER.filter((c) => c.kind !== 'stock')
-	const stocks = ROSTER.filter((c) => c.kind === 'stock')
+	const cgCoins = ROSTER.filter((c) => !isFiat(c))
+	const fiat = ROSTER.filter(isFiat)
 
-	// 1. Crypto + meme: one batched CoinGecko call per node, median per coin.
+	// 1. Crypto, DeFi, PAXG: one batched CoinGecko call per node, median per coin.
 	//    No fallback: if the DON can't agree on crypto prices, no report is
 	//    better than a report of zeros (matches keep the previous epoch).
 	const cg = http
-		.sendRequest(runtime, fetchCoingecko, medianPerCoin(cryptoCoins, [MISSING_FIELD]))(
-			coingeckoUrl(cfg.coingeckoBaseUrl, cryptoCoins),
-			cryptoCoins,
+		.sendRequest(runtime, fetchCoingecko, medianPerCoin(cgCoins, [MISSING_FIELD]))(
+			coingeckoUrl(cfg.coingeckoBaseUrl, cgCoins),
+			cgCoins,
 		)
 		.result()
 	const { [MISSING_FIELD]: cgMissing, ...cryptoBps } = cg
 	if (cgMissing) runtime.log(`CoinGecko: ${Math.round(cgMissing)} coin(s) unpriced, written as 0 bps`)
 
-	// 2. Stocks: Pyth Hermes if a key is configured, otherwise flat.
-	const equityBps = stockBps(runtime, http, stocks, nowMs)
+	// 2. Fiat: Frankfurter FX, latest vs yesterday; 0 bps if unavailable.
+	const fxModifiers = fiatBps(runtime, http, fiat, nowMs)
 
 	// 3. One report, every coin, roster order.
-	const report = buildReport(epoch, { ...cryptoBps, ...equityBps }, ROSTER)
+	const report = buildReport(epoch, { ...cryptoBps, ...fxModifiers }, ROSTER)
 	const encoded = encodeMetaReport(report)
 	runtime.log(`modifiers: ${formatTable(report.coinIds, report.bps)}`)
 

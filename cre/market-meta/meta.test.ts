@@ -10,15 +10,19 @@ import {
 	decodeMetaReport,
 	encodeMetaReport,
 	epochFor,
-	hermesUrl,
+	fiatCurrency,
+	frankfurterUrl,
+	fxBps,
+	fxChangePercent,
+	isFiat,
 	MAX_BPS,
 	normalizeBps,
-	parseHermes,
-	pythBps,
-	pythChangePercent,
+	parseFrankfurter,
+	utcDate,
 	zeroBps,
 } from './meta'
 import { ROSTER, type RosterCoin } from './roster'
+import { FX_2026_10_04_SUNDAY, FX_2026_10_06, FX_EXPECTED_BPS_2026_10_07, FX_LATEST_2026_10_07 } from './fixtures'
 
 describe('changeToBps: clamp(round(change% × 40), ±1500)', () => {
 	test('the documented anchor: a +20% day is +800 bps', () => {
@@ -93,16 +97,24 @@ const coin = (coinId: number, ticker: string, kind: RosterCoin['kind'], coingeck
 	coinId,
 	ticker,
 	kind,
+	pair: `${ticker} / USD`,
 	coingeckoId,
 	feedId: `0x${coinId.toString(16).padStart(64, '0')}`,
 })
 
 describe('CoinGecko parsing', () => {
-	const coins = [coin(0, 'BTC', 'crypto', 'bitcoin'), coin(12, 'BONK', 'meme', 'bonk'), coin(3, 'MON', 'crypto', 'monad')]
+	const coins = [coin(0, 'BTC', 'crypto', 'bitcoin'), coin(9, 'LINK', 'defi', 'chainlink'), coin(12, 'PAXG', 'rwa', 'pax-gold')]
 
 	test('one batched, sorted, de-duplicated URL', () => {
 		expect(coingeckoUrl('https://api.coingecko.com/api/v3/simple/price', [...coins, coins[0]])).toBe(
-			'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,bonk,monad&vs_currencies=usd&include_24hr_change=true',
+			'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,chainlink,pax-gold&vs_currencies=usd&include_24hr_change=true',
+		)
+	})
+
+	test('the real roster: 13 CoinGecko ids (crypto, DeFi, PAXG), no fiat', () => {
+		const url = coingeckoUrl('https://x/simple/price', ROSTER.filter((c) => !isFiat(c)))
+		expect(url).toBe(
+			'https://x/simple/price?ids=aave,avalanche-2,binancecoin,bitcoin,bitcoin-cash,chainlink,ethereum,hyperliquid,pax-gold,ripple,solana,tron,uniswap&vs_currencies=usd&include_24hr_change=true',
 		)
 	})
 
@@ -110,85 +122,105 @@ describe('CoinGecko parsing', () => {
 		const { bps, missing } = coingeckoBps(
 			{
 				bitcoin: { usd: 85853, usd_24h_change: 0.8115145522087773 },
-				bonk: { usd: 4.01e-6, usd_24h_change: 46 },
-				// monad absent
+				chainlink: { usd: 14.2, usd_24h_change: 46 },
+				// pax-gold absent
 			},
 			coins,
 		)
-		expect(bps).toEqual({ c0: 32, c12: 1500, c3: 0 })
-		expect(missing).toEqual(['MON'])
+		expect(bps).toEqual({ c0: 32, c9: 1500, c12: 0 })
+		expect(missing).toEqual(['PAXG'])
 	})
 
 	test('garbage body → every coin 0, all missing', () => {
-		expect(coingeckoBps('nope', coins)).toEqual({ bps: { c0: 0, c12: 0, c3: 0 }, missing: ['BTC', 'BONK', 'MON'] })
+		expect(coingeckoBps('nope', coins)).toEqual({ bps: { c0: 0, c9: 0, c12: 0 }, missing: ['BTC', 'LINK', 'PAXG'] })
 		expect(coingeckoBps({ bitcoin: { usd_24h_change: 'x' } }, coins).missing).toContain('BTC')
 	})
 })
 
-describe('Pyth Hermes parsing', () => {
-	const aapl = coin(24, 'AAPL', 'stock', null)
-	const tsla = coin(25, 'TSLA', 'stock', null)
-	const now = 1_790_000_000
-	const hermes = (rows: Array<[RosterCoin, string, number, number]>) => ({
-		binary: { encoding: 'base64', data: ['AAAA'] },
-		parsed: rows.map(([c, price, expo, publish_time]) => ({
-			id: c.feedId.slice(2), // Hermes returns ids without 0x
-			price: { price, conf: '1', expo, publish_time },
-			ema_price: { price, conf: '1', expo, publish_time },
-		})),
+describe('FX (Frankfurter) for the fiat fighters', () => {
+	const fiat = ROSTER.filter(isFiat)
+	const eur = coin(13, 'EUR', 'rwa', null)
+	const jpy = coin(14, 'JPY', 'rwa', null)
+	const BASE = 'https://api.frankfurter.dev/v1'
+
+	test('fiatCurrency reads the pair; anything but "XXX / USD" is refused', () => {
+		expect(fiatCurrency(eur)).toBe('EUR')
+		expect(() => fiatCurrency({ ...eur, pair: 'USD / EUR' })).toThrow()
+		expect(() => fiatCurrency({ ...eur, pair: 'PAXG / USD' })).toThrow()
 	})
 
-	test('URLs hit /v2/updates/price/latest and /v2/updates/price/<ts>', () => {
-		expect(hermesUrl('https://pyth.dourolabs.app/hermes', 'latest', [aapl])).toBe(
-			`https://pyth.dourolabs.app/hermes/v2/updates/price/latest?ids[]=${aapl.feedId}&parsed=true&encoding=base64`,
+	test('one batched URL per day, sorted codes, trailing slash tolerated', () => {
+		expect(frankfurterUrl(BASE, 'latest', fiat)).toBe(`${BASE}/latest?from=USD&to=AUD,BRL,CAD,EUR,JPY,KRW,MXN`)
+		expect(frankfurterUrl(`${BASE}/`, '2026-10-06', [jpy, eur, eur])).toBe(`${BASE}/2026-10-06?from=USD&to=EUR,JPY`)
+	})
+
+	test('utcDate is the UTC calendar day', () => {
+		expect(utcDate(Date.UTC(2026, 9, 7, 0, 0, 0))).toBe('2026-10-07')
+		expect(utcDate(Date.UTC(2026, 9, 7, 23, 59, 59))).toBe('2026-10-07')
+		expect(utcDate(Date.UTC(2026, 9, 7, 12) - 86_400_000)).toBe('2026-10-06')
+	})
+
+	test('parseFrankfurter accepts the real response shape and rejects anything else', () => {
+		const f = parseFrankfurter(FX_LATEST_2026_10_07)
+		expect(f?.date).toBe('2026-10-07')
+		expect(f?.rates.get('EUR')).toBe(0.89469)
+		expect(f?.rates.size).toBe(7)
+		expect(parseFrankfurter({ message: 'not found' })).toBeNull() // Frankfurter's 404 body
+		expect(parseFrankfurter({ ...FX_LATEST_2026_10_07, base: 'EUR' })).toBeNull()
+		expect(parseFrankfurter({ ...FX_LATEST_2026_10_07, amount: 100 })).toBeNull()
+		expect(parseFrankfurter({ ...FX_LATEST_2026_10_07, date: 'yesterday' })).toBeNull()
+		expect(parseFrankfurter(null)).toBeNull()
+		// non-positive / non-numeric rates are dropped, not trusted
+		expect(parseFrankfurter({ ...FX_LATEST_2026_10_07, rates: { EUR: 0, JPY: '158', AUD: 1.4 } })?.rates).toEqual(
+			new Map([['AUD', 1.4]]),
 		)
-		expect(hermesUrl('https://pyth.dourolabs.app/hermes', now - 86_400, [aapl, tsla])).toContain(
-			`/v2/updates/price/${now - 86_400}?ids[]=${aapl.feedId}&ids[]=${tsla.feedId}&`,
-		)
 	})
 
-	test('parseHermes normalises ids to lowercase 0x', () => {
-		const m = parseHermes(hermes([[aapl, '25000000000', -8, now]]))
-		expect(m.get(aapl.feedId)).toEqual({ price: 25_000_000_000n, expo: -8, publishTime: now })
-		expect(parseHermes({}).size).toBe(0)
-		expect(parseHermes(null).size).toBe(0)
+	test('the fighter is XXX / USD: its move is the inverse of USD → XXX', () => {
+		// USD → EUR 0.88739 → 0.89469: the dollar bought more euros, so EUR / USD fell.
+		const pct = fxChangePercent(0.89469, 0.88739) as number
+		const reciprocal = ((1 / 0.89469 - 1 / 0.88739) / (1 / 0.88739)) * 100
+		expect(pct).toBeCloseTo(reciprocal, 12)
+		expect(pct).toBeLessThan(0)
+		expect(changeToBps(pct)).toBe(-33)
+		// a 20% cheaper dollar is a +25% fiat fighter (1 / 0.8 = 1.25) → +1000 bps
+		expect(changeToBps(fxChangePercent(0.8, 1))).toBe(1000)
+		expect(fxChangePercent(undefined, 1)).toBeNull()
+		expect(fxChangePercent(1, 0)).toBeNull()
+		expect(fxChangePercent(Number.NaN, 1)).toBeNull()
 	})
 
-	test('change is exact integer math', () => {
-		const latest = { price: 22_000_000_000n, expo: -8, publishTime: now }
-		const past = { price: 20_000_000_000n, expo: -8, publishTime: now - 86_400 }
-		expect(pythChangePercent(latest, past, 3600)).toBe(10)
-		expect(pythChangePercent(past, latest, 3600)).toBe(null) // past is after latest
-		// differing exponents are reconciled
-		expect(pythChangePercent({ ...latest, price: 220_000_000n, expo: -6 }, past, 3600)).toBe(10)
+	test('fxBps on the recorded 2026-10-07 vs 2026-10-06 fixings', () => {
+		const { bps, missing, sameFixing } = fxBps(FX_LATEST_2026_10_07, FX_2026_10_06, fiat)
+		expect(sameFixing).toBe(false)
+		expect(missing).toEqual([])
+		expect(Object.fromEntries(fiat.map((c) => [c.ticker, bps[coinKey(c.coinId)]]))).toEqual(FX_EXPECTED_BPS_2026_10_07)
 	})
 
-	test('a closed market (window too short) or a bad price is flat', () => {
-		const latest = { price: 22_000_000_000n, expo: -8, publishTime: now }
-		expect(pythChangePercent(latest, { ...latest, publishTime: now - 60 }, 3600)).toBe(null)
-		expect(pythChangePercent(latest, { price: 0n, expo: -8, publishTime: now - 86_400 }, 3600)).toBe(null)
-		expect(pythChangePercent(latest, undefined, 3600)).toBe(null)
+	test('weekend / holiday: the same fixing on both sides is 0 bps for every fiat fighter', () => {
+		// Monday morning before the ECB fixing: latest is still Friday's, and
+		// /v1/<Sunday> also answers with Friday's.
+		const r = fxBps(FX_2026_10_04_SUNDAY, FX_2026_10_04_SUNDAY, fiat)
+		expect(r.sameFixing).toBe(true)
+		expect(r.bps).toEqual(zeroBps(fiat))
+		// a "latest" older than the past fixing (stale cache) is not trusted either
+		expect(fxBps(FX_2026_10_04_SUNDAY, FX_2026_10_06, fiat).bps).toEqual(zeroBps(fiat))
 	})
 
-	test('pythBps end to end', () => {
-		const { bps, flat } = pythBps(
-			hermes([
-				[aapl, '20500000000', -8, now],
-				[tsla, '43000000000', -8, now],
-			]),
-			hermes([
-				[aapl, '20000000000', -8, now - 86_400],
-				[tsla, '43000000000', -8, now - 30], // closed: no usable window
-			]),
-			[aapl, tsla],
-			3600,
-		)
-		expect(bps).toEqual({ c24: 100, c25: 0 }) // +2.5% → +100
-		expect(flat).toEqual(['TSLA'])
+	test('a currency missing from either day is 0 and reported', () => {
+		const { EUR: _drop, ...rest } = FX_2026_10_06.rates
+		const r = fxBps(FX_LATEST_2026_10_07, { ...FX_2026_10_06, rates: rest }, [eur, jpy])
+		expect(r.bps).toEqual({ c13: 0, c14: -4 })
+		expect(r.missing).toEqual(['EUR'])
+	})
+
+	test('an unrecognisable body throws (the workflow then writes 0 for all fiat)', () => {
+		expect(() => fxBps({ message: 'not found' }, FX_2026_10_06, fiat)).toThrow('Frankfurter')
+		expect(() => fxBps(FX_LATEST_2026_10_07, 'garbage', fiat)).toThrow('Frankfurter')
 	})
 
 	test('zeroBps covers every coin', () => {
-		expect(zeroBps([aapl, tsla])).toEqual({ c24: 0, c25: 0 })
+		expect(zeroBps([eur, jpy])).toEqual({ c13: 0, c14: 0 })
 	})
 })
 
@@ -196,11 +228,11 @@ describe('report encoding: abi.encode(uint64, uint16[], int16[])', () => {
 	const solidityTypes = parseAbiParameters('uint64, uint16[], int16[]')
 
 	test('round-trips through viem decodeAbiParameters with the exact Solidity types', () => {
-		const report = { epoch: 2_983_333n, coinIds: [0, 1, 2, 35], bps: [800, -1200, 0, 1500] }
+		const report = { epoch: 2_983_333n, coinIds: [0, 1, 2, 19], bps: [800, -1200, 0, 1500] }
 		const encoded = encodeMetaReport(report)
 		const [epoch, coinIds, bps] = decodeAbiParameters(solidityTypes, encoded)
 		expect(epoch).toBe(2_983_333n)
-		expect([...coinIds]).toEqual([0, 1, 2, 35])
+		expect([...coinIds]).toEqual([0, 1, 2, 19])
 		expect([...bps]).toEqual([800, -1200, 0, 1500])
 		expect(decodeMetaReport(encoded)).toEqual(report)
 	})
@@ -240,12 +272,12 @@ describe('report encoding: abi.encode(uint64, uint16[], int16[])', () => {
 	})
 
 	test('buildReport lays out the whole roster in coinId order, filling gaps with 0', () => {
-		const r = buildReport(9n, { [coinKey(0)]: 800, [coinKey(35)]: -1600, [coinKey(3)]: 12.5 }, ROSTER)
+		const r = buildReport(9n, { [coinKey(0)]: 800, [coinKey(19)]: -1600, [coinKey(3)]: 12.5 }, ROSTER)
 		expect(r.coinIds).toEqual(ROSTER.map((c) => c.coinId).sort((a, b) => a - b))
-		expect(r.coinIds.length).toBe(36)
+		expect(r.coinIds.length).toBe(20)
 		expect(r.bps[0]).toBe(800)
 		expect(r.bps[3]).toBe(13)
-		expect(r.bps[35]).toBe(-1500)
+		expect(r.bps[19]).toBe(-1500)
 		expect(r.bps.filter((b) => b !== 0).length).toBe(3)
 		expect(decodeMetaReport(encodeMetaReport(r))).toEqual(r)
 	})

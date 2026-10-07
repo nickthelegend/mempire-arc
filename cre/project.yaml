@@ -14,8 +14,8 @@
 #     0x76c9cf548b4179F8901cda1f8623568b58215E62
 # MarketMeta.forwarder must be the one matching how the report is delivered.
 #
-# Arc MAINNET (5042, `arc-mainnet`) is not served by CRE: there MarketMeta's
-# meta comes from MarketMeta.postFromOracle (signed-oracle momentum) instead.
+# Arc MAINNET (5042, `arc-mainnet`) is not served by CRE: there MarketMeta
+# computes the meta on chain from Chainlink Data Feeds (MarketMeta.postFromFeeds).
 
 # ==========================================================================
 staging-settings:

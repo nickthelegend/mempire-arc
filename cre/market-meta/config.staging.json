@@ -6,8 +6,7 @@
   "_todo_marketMetaAddress": "TODO(lead): set marketMetaAddress to shared/deployments/5042002.json -> marketMeta once deployed. For `cre workflow simulate --broadcast` that MarketMeta's forwarder must be the Arc-testnet simulation forwarder 0x6E9EE680ef59ef64Aa8C7371279c27E496b5eDc1. Zero address = compute + log the report, never write.",
   "gasLimit": "1500000",
   "coingeckoBaseUrl": "https://api.coingecko.com/api/v3/simple/price",
-  "pythHermesUrl": "https://pyth.dourolabs.app/hermes",
-  "pythMinWindowSeconds": 3600,
+  "frankfurterBaseUrl": "https://api.frankfurter.dev/v1",
   "httpTrigger": {
     "enabled": false,
     "authorizedKeys": []
