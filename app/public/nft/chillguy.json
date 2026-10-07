@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $CHILLGUY",
+  "symbol": "MEMFTR",
+  "description": "A laid-back grey dog in a blue sweater and jeans, hands in pockets, smug half-smile. A Mempire fighter minted from $CHILLGUY. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_chillguy.png",
+  "external_url": "https://mempire.fun/card/chillguy",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$CHILLGUY"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "tank"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "7DLguPoPNoj4bQVa4vHuhrf71U2eYktzEpLdt9YmLpuj"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_chillguy.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $TRX",
+  "symbol": "MEMFTR",
+  "description": "A crimson speedster with an angular three-pointed emblem on the chest, racing visor. A Mempire fighter minted from $TRX. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_trx.png",
+  "external_url": "https://mempire.fun/card/trx",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$TRX"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "ranged"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "HBZmGzaHoo1PED2MHdKaGCUi4rH8bUx2wJvTkyezz736"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_trx.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

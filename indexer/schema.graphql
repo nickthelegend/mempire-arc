@@ -1,0 +1,456 @@
+# Mempire on Monad — HyperIndex schema.
+#
+# Addresses are stored lowercase (config.yaml sets address_format: lowercase),
+# so the app can query with `address.toLowerCase()`.
+# Money is BigInt in base units: MON in wei (18 dp), AUSD in micro-dollars (6 dp),
+# $MEMPIRE in wei (18 dp). Timestamps are unix seconds (Int).
+
+enum Currency {
+  MON
+  AUSD
+}
+
+enum CoinKind {
+  crypto
+  meme
+  stock
+  unknown
+}
+
+enum CardSource {
+  Mint
+  MintMempire
+  Starter
+  Chest
+}
+
+enum MatchState {
+  Open
+  Active
+  Settled
+  Voided
+  Cancelled
+}
+
+enum MatchOutcome {
+  Seat0
+  Seat1
+  Tie
+  Void
+}
+
+enum VoidReason {
+  Disputed
+  NoClaims
+}
+
+enum SeatResult {
+  Pending
+  Win
+  Loss
+  Tie
+  Void
+  Cancelled
+}
+
+# Who wrote an epoch's meta (MarketMeta.MetaSource): 0 = a Chainlink CRE report
+# through the KeystoneForwarder, 1 = postFromPyth (Pyth spot vs EMA momentum).
+enum MetaSourceKind {
+  ChainlinkCRE
+  PythMomentum
+}
+
+enum ChestTier {
+  Silver
+  Golden
+  Magic
+  Legendary
+}
+
+enum ChestState {
+  Idle
+  Unlocking
+  Revealing
+  Opened
+}
+
+# ───────────────────────────────────────────────────────────── players
+
+type Player {
+  id: ID! # lowercase address
+  firstSeen: Int!
+  lastActive: Int! @index
+
+  # Arena record. `matches` counts matches that went live (both seats filled).
+  matches: Int!
+  matchesCreated: Int!
+  matchesCancelled: Int!
+  wins: Int! @index
+  losses: Int!
+  ties: Int!
+  voids: Int!
+  winsByTimeout: Int!
+  plays: Int!
+
+  # Net result of decided matches (payout received − stake put up). Voided and
+  # cancelled matches refund both stakes, so they never touch these.
+  netMon: BigInt! @index
+  netAusd: BigInt! @index
+  wageredMon: BigInt!
+  wageredAusd: BigInt!
+  # Payouts the arena could not push and is holding for the player to pull.
+  heldMon: BigInt!
+  heldAusd: BigInt!
+
+  # Collection.
+  cardsOwned: Int!
+  cardsMinted: Int!
+  highestLevel: Int!
+  merges: Int!
+  mergeSpent: BigInt! # $MEMPIRE
+
+  # Chests and rewards.
+  chestsEarned: Int!
+  chestsBought: Int!
+  chestsForfeited: Int!
+  chestsOpened: Int!
+  rewardedWins: Int!
+  rewardsMempire: BigInt!
+
+  cards: [Card!]! @derivedFrom(field: "owner")
+  seats: [MatchSeat!]! @derivedFrom(field: "player")
+  chests: [Chest!]! @derivedFrom(field: "owner")
+}
+
+# ───────────────────────────────────────────────────────────── roster
+
+type Coin {
+  id: ID! # on-chain coinId as a decimal string
+  coinId: Int! @index
+  ticker: String!
+  name: String!
+  kind: CoinKind!
+  feedId: String!
+  archetype: Int!
+  archetypeName: String!
+  registered: Boolean!
+  active: Boolean!
+
+  cardsMinted: Int!
+  cardsBurned: Int!
+  liveSupply: Int!
+  maxLevel: Int!
+  merges: Int!
+
+  # Arena stats, derived by joining each staked deck's cardIds to the cards'
+  # coins: appearances when a deck is staked, results when a match settles.
+  deckAppearances: Int!
+  fielded: Int! # decided matches (win + loss + tie)
+  wins: Int!
+  losses: Int!
+  ties: Int!
+  winRateBps: Int! @index # wins / (wins + losses) in basis points
+  timesPlayed: Int! # card drops of this fighter in the on-chain play log
+
+  # Does the market meta matter? Results split by the modifier the coin carried
+  # in the epoch the match snapshotted.
+  winsBuffed: Int!
+  lossesBuffed: Int!
+  winsNerfed: Int!
+  lossesNerfed: Int!
+
+  # Latest MarketMeta modifier (±1500 bps).
+  currentModifierBps: Int!
+  modifierEpoch: BigInt!
+
+  cards: [Card!]! @derivedFrom(field: "coin")
+  modifiers: [CoinModifier!]! @derivedFrom(field: "coin")
+}
+
+# ───────────────────────────────────────────────────────────── cards
+
+type Card {
+  id: ID! # tokenId
+  tokenId: BigInt!
+  owner: Player!
+  coin: Coin!
+  level: Int! @index
+  archetype: Int!
+  source: CardSource!
+  mintPrice: BigInt! # Pyth price at mint (0 for starter and chest cards)
+  mintExpo: Int!
+  mintedAt: Int!
+  mintTxHash: String!
+  chest: Chest # set when the card dropped from a chest
+
+  burned: Boolean!
+  burnedAt: Int
+  mergedInto: Card # the card this one was burned into
+  mergesAbsorbed: Int! # duplicates merged into this card
+  transfers: Int!
+
+  matchesFielded: Int!
+  wins: Int!
+  losses: Int!
+  ties: Int!
+
+  mergeHistory: [Merge!]! @derivedFrom(field: "card")
+}
+
+type Merge {
+  id: ID! # txHash-logIndex
+  card: Card!
+  burned: Card!
+  owner: Player!
+  coin: Coin!
+  newLevel: Int!
+  paid: BigInt! # $MEMPIRE
+  timestamp: Int! @index
+  blockNumber: Int!
+  txHash: String!
+}
+
+# ───────────────────────────────────────────────────────────── arena
+
+type Match {
+  id: ID! # matchId
+  matchId: BigInt!
+  state: MatchState! @index
+  tier: Int!
+  currency: Currency!
+  currencyAddress: String!
+  stake: BigInt!
+
+  player0: Player!
+  player1: Player
+  session0: String!
+  session1: String
+  power0: Int!
+  power1: Int
+  deckHash0: String!
+  deckHash1: String
+  metaEpoch: BigInt
+  marketEpoch: MarketEpoch
+
+  plays0: Int!
+  plays1: Int!
+  playCount: Int!
+  lastTick0: Int!
+  lastTick1: Int!
+  checkpointCount: Int!
+
+  claim0: Int # 0 | 1 | 2 (tie) — what seat 0 says happened
+  claim1: Int
+  final0: String
+  final1: String
+  claimCount: Int!
+
+  outcome: MatchOutcome
+  winnerSeat: Int
+  winner: Player
+  byTimeout: Boolean!
+  disputed: Boolean!
+  voidReason: VoidReason
+  pot: BigInt!
+  rake: BigInt!
+  winnerPayout: BigInt!
+  tiePayoutEach: BigInt!
+  winReward: BigInt!
+  chestTier: ChestTier
+  chestForfeited: Boolean!
+
+  createdAt: Int! @index
+  joinedAt: Int
+  deadline: Int
+  endedAt: Int
+  durationSeconds: Int # endedAt − joinedAt for matches that went live
+  createdTxHash: String!
+  endedTxHash: String
+
+  seats: [MatchSeat!]! @derivedFrom(field: "match")
+  plays: [Play!]! @derivedFrom(field: "match")
+  checkpoints: [Checkpoint!]! @derivedFrom(field: "match")
+  claims: [Claim!]! @derivedFrom(field: "match")
+}
+
+# One row per (match, seat): the player's side of a match. This is the
+# player-history entity — query MatchSeat by player, newest first.
+type MatchSeat @index(fields: ["player", ["createdAt", "DESC"]]) {
+  id: ID! # matchId-seat
+  match: Match!
+  player: Player!
+  opponent: Player
+  seat: Int!
+  currency: Currency!
+  stake: BigInt!
+  power: Int!
+  cardIds: [String!]!
+  coinIds: [String!]! # coin of each deck slot; Played.cardIndex indexes this
+  plays: Int!
+  result: SeatResult!
+  payout: BigInt! # what the arena paid this seat at the end
+  net: BigInt! # payout − stake for decided matches, 0 for void/cancel
+  createdAt: Int!
+  endedAt: Int
+}
+
+# Every card drop, written on chain by the seat's session key while the match
+# runs. Powers the "live on Monad" feed.
+type Play {
+  id: ID! # txHash-logIndex
+  match: Match!
+  seat: Int!
+  player: Player
+  tick: Int!
+  cardIndex: Int!
+  card: Card
+  coin: Coin
+  x: Int!
+  y: Int!
+  seq: Int! # 1-based play number for this seat
+  blockNumber: Int! @index
+  logIndex: Int!
+  timestamp: Int! @index
+  txHash: String!
+}
+
+type Checkpoint {
+  id: ID! # txHash-logIndex
+  match: Match!
+  seat: Int!
+  tick: Int!
+  stateHash: BigInt!
+  blockNumber: Int!
+  timestamp: Int!
+  txHash: String!
+}
+
+type Claim {
+  id: ID! # matchId-seat
+  match: Match!
+  seat: Int!
+  player: Player
+  winner: Int!
+  finalHash: String!
+  timestamp: Int!
+  txHash: String!
+}
+
+type HeldPayout {
+  id: ID! # txHash-logIndex
+  player: String! @index
+  currency: Currency!
+  amount: BigInt!
+  timestamp: Int!
+  txHash: String!
+}
+
+# Internal join: which match a settlement transaction settled, so the chest and
+# reward events the arena fires later in the same transaction can find it.
+type SettlementTx {
+  id: ID! # txHash
+  match: Match!
+}
+
+# ───────────────────────────────────────────────────────────── chests
+
+type Chest {
+  id: ID! # chestId
+  owner: Player!
+  tier: ChestTier!
+  bought: Boolean!
+  state: ChestState! @index
+  match: Match # the win that paid it (null when bought)
+  grantedAt: Int!
+  readyAt: Int
+  unlockStartedAt: Int
+  skipped: Boolean!
+  skipPaid: BigInt!
+  revealBlock: BigInt
+  recommits: Int!
+  openedAt: Int
+  seed: String
+  cardIds: [String!]!
+  cards: [Card!]! @derivedFrom(field: "chest")
+}
+
+# ───────────────────────────────────────────────────────────── market meta
+
+type MarketEpoch {
+  id: ID! # epoch
+  epoch: BigInt!
+  postedAt: Int!
+  blockNumber: Int!
+  txHash: String!
+  coinCount: Int!
+  maxBps: Int!
+  minBps: Int!
+  topCoin: Coin
+  bottomCoin: Coin
+  matches: Int! # matches that snapshotted this epoch at join
+  # From MetaSource, emitted right after MetaPosted in the same transaction.
+  # Unset only if a MetaPosted is ever seen without one.
+  source: MetaSourceKind
+  sourceCode: Int # raw uint8: 0 = Chainlink CRE, 1 = Pyth momentum
+  poster: String # CRE: the forwarder; Pyth: whoever paid the update fee
+  modifiers: [CoinModifier!]! @derivedFrom(field: "epoch")
+}
+
+type CoinModifier {
+  id: ID! # epoch-coinId
+  epoch: MarketEpoch!
+  coin: Coin!
+  bps: Int!
+  postedAt: Int!
+}
+
+# ───────────────────────────────────────────────────────────── aggregates
+
+type DailyStats {
+  id: ID! # YYYY-MM-DD (UTC)
+  dayStart: Int! @index
+  matchesCreated: Int!
+  matchesStarted: Int!
+  matchesSettled: Int!
+  matchesVoided: Int!
+  matchesCancelled: Int!
+  ties: Int!
+  volumeMon: BigInt! # settled pots
+  volumeAusd: BigInt!
+  rakeMon: BigInt!
+  rakeAusd: BigInt!
+  plays: Int!
+  checkpoints: Int!
+  cardsMinted: Int!
+  merges: Int!
+  chestsGranted: Int!
+  chestsOpened: Int!
+  rewardsMempire: BigInt!
+  uniquePlayers: Int!
+  newPlayers: Int!
+}
+
+# Marker row: (day, player) seen. Drives DailyStats.uniquePlayers.
+type PlayerDay {
+  id: ID! # YYYY-MM-DD-address
+}
+
+# Protocol-wide totals: a single row with id "global".
+type Totals {
+  id: ID! # "global"
+  players: Int!
+  coins: Int! # registered fighters
+  matches: Int!
+  matchesSettled: Int!
+  matchesVoided: Int!
+  plays: Int!
+  cardsMinted: Int!
+  cardsBurned: Int!
+  merges: Int!
+  chestsOpened: Int!
+  volumeMon: BigInt!
+  volumeAusd: BigInt!
+  rakeMon: BigInt!
+  rakeAusd: BigInt!
+  currentEpoch: BigInt!
+}

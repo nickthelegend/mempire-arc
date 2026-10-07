@@ -1,0 +1,21 @@
+# ==========================================================================
+# CRE PROJECT SETTINGS FILE
+# ==========================================================================
+# Project-specific settings for CRE CLI targets.
+# Each target defines cre-cli, account, and rpcs groups.
+#
+# RPC URLs support ${VAR_NAME} syntax to reference environment variables.
+# Monad testnet (chain id 10143) is in the official chain-selectors registry
+# as `monad-testnet`; the simulator's MockKeystoneForwarder there is
+# 0xB9F79d863261869B234c481D1f9A7af84AeAd192.
+
+# ==========================================================================
+staging-settings:
+  rpcs:
+    - chain-name: monad-testnet
+      url: https://testnet-rpc.monad.xyz
+# ==========================================================================
+production-settings:
+  rpcs:
+    - chain-name: monad-testnet
+      url: https://testnet-rpc.monad.xyz

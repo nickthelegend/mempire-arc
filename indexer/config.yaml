@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: mempire-indexer
+description: Mempire on Monad — fighters, merges, chests, escrowed 1v1 matches, the on-chain play log and the market meta (Chainlink CRE or Pyth momentum).
+# Store every address lowercase so the app can query with address.toLowerCase().
+address_format: lowercase
+# Every handler stamps rows with the transaction hash (the live play feed links
+# each card drop to its Monad tx). Block number and timestamp come by default.
+field_selection:
+  transaction_fields: [hash]
+contracts:
+  - name: MempireCards
+    abi_file_path: ./abis/MempireCards.json
+    events:
+      - event: CoinRegistered
+      - event: CoinActive
+      - event: CardMinted
+      - event: CardMerged
+      - event: Transfer
+      - event: ChestGranted
+      - event: ChestForfeited
+      - event: ChestUnlocking
+      - event: ChestSkipped
+      - event: ChestOpening
+      - event: ChestOpened
+  - name: MempireArena
+    abi_file_path: ./abis/MempireArena.json
+    events:
+      - event: MatchCreated
+      - event: MatchJoined
+      - event: MatchCancelled
+      - event: Played
+      - event: Checkpoint
+      - event: Claimed
+      - event: MatchSettled
+      - event: MatchVoided
+      - event: WinRewarded
+      - event: PayoutHeld
+  - name: MarketMeta
+    abi_file_path: ./abis/MarketMeta.json
+    events:
+      - event: MetaPosted
+      - event: MetaSource
+chains:
+  - id: 10143 # Monad testnet — native HyperSync (https://10143.hypersync.xyz)
+    start_block: 0 # TODO: set from shared/deployments/10143.json (startBlock)
+    contracts:
+      - name: MempireCards
+        address: "0x00000000000000000000000000000000000c0de1" # TODO: set from shared/deployments/10143.json (cards)
+      - name: MempireArena
+        address: "0x00000000000000000000000000000000000c0de2" # TODO: set from shared/deployments/10143.json (arena)
+      - name: MarketMeta
+        address: "0x00000000000000000000000000000000000c0de3" # TODO: set from shared/deployments/10143.json (marketMeta)

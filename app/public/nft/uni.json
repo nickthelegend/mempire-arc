@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $UNI",
+  "symbol": "MEMFTR",
+  "description": "A playful pink unicorn-hooded trickster with a horn on the hood, swirling swap arrows on the cloak. A Mempire fighter minted from $UNI. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_uni.png",
+  "external_url": "https://mempire.fun/card/uni",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$UNI"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "support"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "5PqAkrUBLVRtA8VUrKSzP46HeHfdeM578rkk5YqRmPyb"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_uni.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $JPM",
+  "symbol": "MEMFTR",
+  "description": "A stern banker-knight in deep brown and gold with a chevron crest on a tower shield. A Mempire fighter minted from $JPM. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_jpm.png",
+  "external_url": "https://mempire.fun/card/jpm",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$JPM"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Equity"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "spell"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "2HrxqA1YQesqy1xueU64FJ1ksikjfJ9dh51EtjPrCAEg"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_jpm.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

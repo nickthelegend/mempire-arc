@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $ETH",
+  "symbol": "MEMFTR",
+  "description": "A sleek violet mage in flowing robes, a faceted glowing Ethereum diamond-octahedron crystal floating above his open palm and a matching crystal set into his chest. A Mempire fighter minted from $ETH. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_eth.png",
+  "external_url": "https://mempire.fun/card/eth",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$ETH"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "tank"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "Ajhjp33b1BhfXAd464rWdDCHL34KNtqoR2gwmu5CT9cF"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_eth.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

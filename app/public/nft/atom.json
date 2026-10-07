@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $ATOM",
+  "symbol": "MEMFTR",
+  "description": "A cosmic navigator with three elliptical orbital rings circling his torso like an atom, star-map cloak. A Mempire fighter minted from $ATOM. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_atom.png",
+  "external_url": "https://mempire.fun/card/atom",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$ATOM"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "support"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "ATfXa6emupmRdrGU1NMuEFc7QM7uBJzyLpvx5KREmvQW"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_atom.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

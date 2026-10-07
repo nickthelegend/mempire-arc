@@ -1,0 +1,44 @@
+# MEMPIRE ASSET MANIFEST
+# STYLE FORMULA (byte-identical in every generation prompt — never paraphrase):
+# polished low-poly 3D cartoon render with soft toy-like shading and gentle rim light, chunky rounded chibi proportions with oversized heads and faceted low-poly silhouettes, environment in deep violet-black stone with royal purple banners and glowing teal energy accents, hero units in saturated candy colors that pop against the dark ground, money and reward elements in gleaming royal gold, regal nighttime throne-room mood lit by warm gold torchlight, high contrast between game elements and backgrounds, clean readable silhouettes, consistent three-quarter isometric view across all assets
+# STYLE TOKEN (length-limited fields only):
+# low-poly chibi 3D cartoon, violet-black royal arena, teal energy glow, royal gold accents, warm torchlight
+id,role,type,description,size/ratio,style line ref,source
+unit_tank,tank archetype battle unit,3d_rigged,rotund chibi armored whale knight with tower shield,~8000 tris,formula,generate
+unit_swarm,swarm archetype battle unit,3d_rigged,tiny chibi doge pup warrior with bone dagger,~5000 tris,formula,generate
+unit_ranged,ranged archetype battle unit,3d_rigged,chibi frog archer with coin-tipped golden bow,~8000 tris,formula,generate
+unit_splash,splash archetype battle unit,3d_rigged,chibi cat bomber hurling giant gold coin bomb,~8000 tris,formula,generate
+unit_support,support archetype battle unit,3d_rigged,chibi penguin herald carrying royal purple banner,~8000 tris,formula,generate
+tower_princess,side tower,3d_static,violet stone watchtower with gold trim and purple banner,~3000 tris,formula,generate
+tower_king,king tower,3d_static,royal throne tower crowned by giant gold crown,~5000 tris,formula,generate
+tex_ground,arena floor,texture_tile,dark violet stone floor tiles with faint gold inlay,1024 seamless,formula,generate
+tex_lane,unit lane path,texture_tile,royal purple carpet path with gold trim edges,1024 seamless,formula,generate
+tex_river,center river,texture_tile,glowing teal energy liquid with purple sparks,1024 seamless,formula,generate
+logo,app wordmark,image,MEMPIRE blackletter wordmark under a three-point gold crown,1:1,formula,generate
+card_frame,nft card frame,ui,ornate gilded royal card frame with empty center window,3:4,formula,generate
+icon_tank,archetype icon,ui,minimal shield crest icon,1:1,formula,generate
+icon_swarm,archetype icon,ui,minimal three-pups crest icon,1:1,formula,generate
+icon_ranged,archetype icon,ui,minimal bow-and-coin crest icon,1:1,formula,generate
+icon_splash,archetype icon,ui,minimal coin-bomb burst crest icon,1:1,formula,generate
+icon_support,archetype icon,ui,minimal banner crest icon,1:1,formula,generate
+icon_spell,archetype icon,ui,minimal lightning scroll crest icon,1:1,formula,generate
+coin_doggo,fake memecoin logo,image,round coin logo of grinning chibi shiba face,1:1,formula,generate
+coin_wifhat,fake memecoin logo,image,round coin logo of chibi dog wearing pink knit hat,1:1,formula,generate
+coin_popkat,fake memecoin logo,image,round coin logo of wide-mouthed chibi cat,1:1,formula,generate
+coin_peng,fake memecoin logo,image,round coin logo of smug chibi penguin,1:1,formula,generate
+coin_frg,fake memecoin logo,image,round coin logo of serene chibi green frog,1:1,formula,generate
+coin_mooncat,fake memecoin logo,image,round coin logo of chibi cat on crescent moon,1:1,formula,generate
+coin_rkt,fake memecoin logo,image,round coin logo of chibi rocket with flame,1:1,formula,generate
+coin_chad,fake memecoin logo,image,round coin logo of square-jawed chibi hero face,1:1,formula,generate
+coin_babywhale,fake memecoin logo,image,round coin logo of tiny chibi whale spouting stars,1:1,formula,generate
+coin_rugproof,fake memecoin logo,image,round coin logo of chibi carpet tied in a knot,1:1,formula,generate
+coin_gmi,fake memecoin logo,image,round coin logo of chibi sun rising over candles,1:1,formula,generate
+coin_ser,fake memecoin logo,image,round coin logo of chibi knight helmet with monocle,1:1,formula,generate
+music_menu,menu loop,audio,regal chiptune-orchestral hybrid loop calm and stately,60s loop,token,generate
+music_battle,battle loop,audio,driving orchestral chiptune battle loop rising tension,90s loop,token,generate
+sfx_deploy,card deploy sound,audio,soft magical pop with coin chime,1s,token,generate
+sfx_hit,unit hit sound,audio,punchy toy thwack,0.5s,token,generate
+sfx_tower_down,tower destroyed,audio,stone crumble with deep bell toll,2s,token,generate
+sfx_victory,victory fanfare,audio,royal trumpet fanfare with coin shower,3s,token,generate
+sfx_defeat,defeat sting,audio,sad descending horn with hollow wind,3s,token,generate
+sfx_coin,pot and money tick,audio,bright single gold coin clink,0.3s,token,generate

@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $HARAMBE",
+  "symbol": "MEMFTR",
+  "description": "A noble gorilla guardian standing tall with a gentle protective expression. A Mempire fighter minted from $HARAMBE. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_harambe.png",
+  "external_url": "https://mempire.fun/card/harambe",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$HARAMBE"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "2vtYubbuWn6pc1ehCxvakYHEMeg3u4HzUNNw7cwATXvC"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_harambe.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

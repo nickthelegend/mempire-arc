@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $TRUMPC",
+  "symbol": "MEMFTR",
+  "description": "A cartoon golden-haired tycoon in a navy suit with an oversized red tie, thumbs up. A Mempire fighter minted from $TRUMPC. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_trumpc.png",
+  "external_url": "https://mempire.fun/card/trumpc",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$TRUMPC"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "4e8V1qASqH8nJ8xpZ6eBGUL1VbJN6NtbNT2oxzhqd2zd"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_trumpc.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

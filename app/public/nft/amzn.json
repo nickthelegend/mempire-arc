@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $AMZN",
+  "symbol": "MEMFTR",
+  "description": "A cheerful orange courier with a curved smile-arrow emblem across the chest, delivery pack on the back. A Mempire fighter minted from $AMZN. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_amzn.png",
+  "external_url": "https://mempire.fun/card/amzn",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$AMZN"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Equity"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "ranged"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "HXn84MvwErT41PGZPfU3i1RS4sM8HH1dwSj8oRsnM6xK"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_amzn.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+# Everything the image does not need. Keeps the build context small and keeps
+# secrets out of it — a .env copied into a layer is in the image forever, even
+# if a later layer deletes it.
+node_modules
+npm-debug.log
+.env
+.env.*
+!.env.example
+test-*.mjs
+seed-*.mjs
+Dockerfile
+docker-compose.yml
+.dockerignore
+README*.md

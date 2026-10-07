@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $XRP",
+  "symbol": "MEMFTR",
+  "description": "A calm silver-black monk with a circular X-in-a-ring medallion glowing on his chest, flowing dark robes. A Mempire fighter minted from $XRP. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_xrp.png",
+  "external_url": "https://mempire.fun/card/xrp",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$XRP"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "support"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "FWFJhvSAG8gpaPoWA6aonsPQHqP36okpYHroFjVGPigc"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_xrp.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

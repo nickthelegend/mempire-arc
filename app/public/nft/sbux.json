@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $SBUX",
+  "symbol": "MEMFTR",
+  "description": "A cheerful green barista-knight with a circular crest on the chest and a steaming cup as a mace. A Mempire fighter minted from $SBUX. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_sbux.png",
+  "external_url": "https://mempire.fun/card/sbux",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$SBUX"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Equity"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "splash"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "9KAde1LdM65KMjozEFa55wjU5b2WVhwV7fn4QbWcXXr1"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_sbux.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

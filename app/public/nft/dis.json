@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $DIS",
+  "symbol": "MEMFTR",
+  "description": "A whimsical storyteller in a midnight-blue cloak with a castle-silhouette emblem and a sparkle wand. A Mempire fighter minted from $DIS. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_dis.png",
+  "external_url": "https://mempire.fun/card/dis",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$DIS"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Equity"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "GcwGFiw71VKSaKRdjyPpuqU45CBbLkG3wi3B2UJzJ2a4"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_dis.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

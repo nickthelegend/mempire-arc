@@ -1,0 +1,56 @@
+{
+  "name": "app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/sync-shared.mjs && node scripts/preflight.mjs && tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "preflight": "node scripts/preflight.mjs",
+    "typecheck": "tsc -b",
+    "sync-shared": "node scripts/sync-shared.mjs"
+  },
+  "dependencies": {
+    "@category-labs/mera": "^0.2.0",
+    "@fontsource/hanken-grotesk": "^5.3.0",
+    "@fontsource/lilita-one": "^5.3.0",
+    "@fontsource/martian-mono": "^5.3.0",
+    "@privy-io/react-auth": "^3.47.0",
+    "@react-three/fiber": "^9.6.1",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
+    "@stripe/stripe-js": "^10.0.0",
+    "@types/three": "^0.185.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.2",
+    "three": "^0.185.1",
+    "viem": "^2.57.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "oxlint": "^1.71.0",
+    "playwright": "^1.58.0",
+    "tsx": "^4.23.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "typescript": "~6.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

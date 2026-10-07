@@ -1,0 +1,63 @@
+# The API and a database, runnable with one command and no external accounts.
+#
+#   docker compose up --build
+#   node test-api.mjs             # hits every endpoint against it
+#
+# The bundled Mongo is the point, not a convenience. It means the whole stack
+# runs with no Atlas credentials at all — useful for CI, useful for anyone
+# cloning this, and useful right now because the Atlas password that was in use
+# has to be rotated before it can be trusted again.
+#
+# For a hosted deployment, drop the `mongo` service and point MONGODB_URI at the
+# managed cluster; nothing else changes.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    # Not published to the host by default. The API reaches it over the compose
+    # network, and an unauthenticated Mongo on 27017 is one of the easier ways
+    # to lose a database.
+    expose:
+      - "27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8787}:8787"
+    environment:
+      PORT: 8787
+      # Compose DNS: `mongo` is the service name above.
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-mempire}
+      # Unset means open, which is right for local work and wrong in production.
+      # Set it to the deployed app's origin(s), comma-separated.
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # The chain side; see .env.example. Without a relayer key onboarding
+      # answers 503 and everything else still runs.
+      CHAIN_ID: ${CHAIN_ID:-10143}
+      RPC_URL: ${RPC_URL:-https://testnet-rpc.monad.xyz}
+      RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY:-}
+      AUSD_FAUCET: ${AUSD_FAUCET:-}
+      ONBOARD_MON_DRIP: ${ONBOARD_MON_DRIP:-0.05}
+      PYTH_API_KEY: ${PYTH_API_KEY:-}
+      PYTH_HERMES_URL: ${PYTH_HERMES_URL:-https://pyth.dourolabs.app/hermes}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://mempire.fun}
+    depends_on:
+      mongo:
+        # Waits for the healthcheck, not just for the container to exist — with
+        # MONGODB_URI set the API exits on a failed connect, so starting it
+        # early is a crash loop.
+        condition: service_healthy
+
+volumes:
+  mongo-data:

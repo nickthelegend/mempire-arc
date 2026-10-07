@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $PEPE",
+  "symbol": "MEMFTR",
+  "description": "A classic green frog in a brown coat, smug knowing grin, hands clasped. A Mempire fighter minted from $PEPE. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_pepe.png",
+  "external_url": "https://mempire.fun/card/pepe",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$PEPE"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "spell"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "GAWFt81Xkyc3qrfFkvgtw1huBbX6QHZyCsZ9vciC9Vtu"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_pepe.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

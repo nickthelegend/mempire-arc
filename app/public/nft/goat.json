@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $GOAT",
+  "symbol": "MEMFTR",
+  "description": "A mystical goat prophet in tattered robes with glowing terminal-green eyes. A Mempire fighter minted from $GOAT. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_goat.png",
+  "external_url": "https://mempire.fun/card/goat",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$GOAT"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "2C6U13U3nGWBsmxRZUj49EPk87APGS335yKAfB2A9hbF"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_goat.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

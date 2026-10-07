@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $DOGE",
+  "symbol": "MEMFTR",
+  "description": "A cheerful Shiba Inu warrior standing upright in light gold armour, big grin, tiny gold coin shield. A Mempire fighter minted from $DOGE. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_doge.png",
+  "external_url": "https://mempire.fun/card/doge",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$DOGE"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "splash"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "9zbZq3Wgm7gHCNEPkgeGrMHq7cgj1unmMe7qBjHudqs9"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_doge.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

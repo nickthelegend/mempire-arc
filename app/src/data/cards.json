@@ -1,0 +1,453 @@
+{
+ "style": "polished low-poly 3D cartoon character card art in the Clash Royale visual language, chunky rounded chibi proportions with an oversized head and small body, soft toy-like shading with gentle rim light, thick dark outline, saturated candy colours that pop, clean readable silhouette, full body facing camera in a confident three-quarter hero pose, centred with clear margin on every side and nothing cropped, isolated on a completely flat solid pure magenta #FF00FF background with no gradient and no shadow cast on the background, no text, no letters, no words, no writing, no typography",
+ "cards": [
+  {
+   "ticker": "BTC",
+   "name": "Bitcoin",
+   "kind": "crypto",
+   "desc": "a rounded gold-and-orange armoured knight whose round chest plate IS a gleaming golden Bitcoin coin with the bitcoin currency symbol embossed in relief, tiny gold pauldrons, a short orange cape, holding a small round golden coin shield",
+   "palette": "warm honey-gold and amber"
+  },
+  {
+   "ticker": "ETH",
+   "name": "Ethereum",
+   "kind": "crypto",
+   "desc": "a sleek violet mage in flowing robes, a faceted glowing Ethereum diamond-octahedron crystal floating above his open palm and a matching crystal set into his chest",
+   "palette": "deep violet and silver"
+  },
+  {
+   "ticker": "SOL",
+   "name": "Solana",
+   "kind": "crypto",
+   "desc": "a fast neon courier with a purple-to-teal gradient visor, three angled speed-stripe bars across the chest, jetpack thrusters at the heels",
+   "palette": "electric purple and mint teal"
+  },
+  {
+   "ticker": "BNB",
+   "name": "BNB",
+   "kind": "crypto",
+   "desc": "a stocky golden gladiator with a four-diamond rhombus emblem on a round shield, gold bracers",
+   "palette": "bright gold and black"
+  },
+  {
+   "ticker": "XRP",
+   "name": "XRP",
+   "kind": "crypto",
+   "desc": "a calm silver-black monk with a circular X-in-a-ring medallion glowing on his chest, flowing dark robes",
+   "palette": "gunmetal silver and deep grey"
+  },
+  {
+   "ticker": "ADA",
+   "name": "Cardano",
+   "kind": "crypto",
+   "desc": "a scholarly navy astronomer with a constellation of connected dots forming a ring above his head, telescope on his back",
+   "palette": "deep navy and pale blue"
+  },
+  {
+   "ticker": "DOGE",
+   "name": "Dogecoin",
+   "kind": "crypto",
+   "desc": "a cheerful Shiba Inu warrior standing upright in light gold armour, big grin, tiny gold coin shield",
+   "palette": "tan gold and cream"
+  },
+  {
+   "ticker": "AVAX",
+   "name": "Avalanche",
+   "kind": "crypto",
+   "desc": "a red mountaineer in a triangular crimson-and-white peaked helm shaped like a mountain, ice axe",
+   "palette": "crimson red and snow white"
+  },
+  {
+   "ticker": "LINK",
+   "name": "Chainlink",
+   "kind": "crypto",
+   "desc": "a cobalt-blue engineer holding a glowing hexagonal chain-link cube, harness of interlocking rings",
+   "palette": "cobalt blue and steel"
+  },
+  {
+   "ticker": "DOT",
+   "name": "Polkadot",
+   "kind": "crypto",
+   "desc": "a hot-pink acrobat ringed by orbiting pink dots forming a circle around her, sleek bodysuit",
+   "palette": "hot pink and black"
+  },
+  {
+   "ticker": "MATIC",
+   "name": "Polygon",
+   "kind": "crypto",
+   "desc": "a purple geometrist whose shield is a perfect purple polygon, faceted crystal armour",
+   "palette": "royal purple and lavender"
+  },
+  {
+   "ticker": "TRX",
+   "name": "TRON",
+   "kind": "crypto",
+   "desc": "a crimson speedster with an angular three-pointed emblem on the chest, racing visor",
+   "palette": "crimson and dark chrome"
+  },
+  {
+   "ticker": "LTC",
+   "name": "Litecoin",
+   "kind": "crypto",
+   "desc": "a silver courier knight with a slanted L-with-a-stroke coin as a chest medallion, light travel cloak",
+   "palette": "bright silver and pale grey"
+  },
+  {
+   "ticker": "SHIB",
+   "name": "Shiba Inu",
+   "kind": "crypto",
+   "desc": "a scrappy orange Shiba pup brawler in a tiny red headband, boxing wraps on both paws",
+   "palette": "burnt orange and red"
+  },
+  {
+   "ticker": "UNI",
+   "name": "Uniswap",
+   "kind": "crypto",
+   "desc": "a playful pink unicorn-hooded trickster with a horn on the hood, swirling swap arrows on the cloak",
+   "palette": "bubblegum pink and white"
+  },
+  {
+   "ticker": "ATOM",
+   "name": "Cosmos",
+   "kind": "crypto",
+   "desc": "a cosmic navigator with three elliptical orbital rings circling his torso like an atom, star-map cloak",
+   "palette": "deep space blue and starlight"
+  },
+  {
+   "ticker": "XLM",
+   "name": "Stellar",
+   "kind": "crypto",
+   "desc": "a luminous herald with a soaring rocket-shaped light streak emblem on the chest, white-and-gold cloak",
+   "palette": "bright white and gold"
+  },
+  {
+   "ticker": "APT",
+   "name": "Aptos",
+   "kind": "crypto",
+   "desc": "a minimal black-and-white ninja with a clean circular sigil on the back, sharp geometric armour",
+   "palette": "stark black and white"
+  },
+  {
+   "ticker": "ARB",
+   "name": "Arbitrum",
+   "kind": "crypto",
+   "desc": "a cool blue tactician holding a shield shaped like a circular blue lattice of nested triangles",
+   "palette": "arbitrum blue and navy"
+  },
+  {
+   "ticker": "OP",
+   "name": "Optimism",
+   "kind": "crypto",
+   "desc": "a warm red optimist with a bold circular O emblem on the chest, sun-flare cape",
+   "palette": "optimism red and coral"
+  },
+  {
+   "ticker": "AAPL",
+   "name": "Apple",
+   "kind": "stock",
+   "desc": "a sleek minimalist tech-knight in brushed aluminium armour with a clean bitten-apple silhouette emblem glowing on the chest plate",
+   "palette": "brushed silver and soft white"
+  },
+  {
+   "ticker": "TSLA",
+   "name": "Tesla",
+   "kind": "stock",
+   "desc": "an electric red racer in aerodynamic armour with a T-shaped lightning crest on the helm, arc of electricity between the hands",
+   "palette": "tesla red and chrome"
+  },
+  {
+   "ticker": "NVDA",
+   "name": "Nvidia",
+   "kind": "stock",
+   "desc": "an emerald-green cyber-warrior with a glowing green eye-spiral emblem on the chest, GPU-fin shoulder plates",
+   "palette": "nvidia green and black"
+  },
+  {
+   "ticker": "MSFT",
+   "name": "Microsoft",
+   "kind": "stock",
+   "desc": "a four-panel knight whose shield is a square split into red, green, blue and yellow quadrants, clean blue armour",
+   "palette": "four-colour quadrants on blue"
+  },
+  {
+   "ticker": "GOOGL",
+   "name": "Alphabet",
+   "kind": "stock",
+   "desc": "a colourful scholar in white robes with red, yellow, green and blue accent bands, holding a glowing magnifier",
+   "palette": "primary red yellow green blue"
+  },
+  {
+   "ticker": "AMZN",
+   "name": "Amazon",
+   "kind": "stock",
+   "desc": "a cheerful orange courier with a curved smile-arrow emblem across the chest, delivery pack on the back",
+   "palette": "amazon orange and dark slate"
+  },
+  {
+   "ticker": "META",
+   "name": "Meta",
+   "kind": "stock",
+   "desc": "an infinity-loop mystic in cobalt blue with a glowing continuous double-loop symbol orbiting the torso",
+   "palette": "meta blue and violet"
+  },
+  {
+   "ticker": "NFLX",
+   "name": "Netflix",
+   "kind": "stock",
+   "desc": "a dramatic crimson performer with a tall red ribbon banner rising behind, spotlight glow",
+   "palette": "netflix red and black"
+  },
+  {
+   "ticker": "AMD",
+   "name": "AMD",
+   "kind": "stock",
+   "desc": "a precise white-and-red technician with an angular arrow-array emblem on the pauldron",
+   "palette": "clean white and racing red"
+  },
+  {
+   "ticker": "INTC",
+   "name": "Intel",
+   "kind": "stock",
+   "desc": "a cool blue circuit-smith with a concentric ring emblem on the chest, circuit-trace filigree on the armour",
+   "palette": "intel blue and pale cyan"
+  },
+  {
+   "ticker": "COIN",
+   "name": "Coinbase",
+   "kind": "stock",
+   "desc": "a friendly blue banker with a circular coin ring emblem, neat blue suit-armour and a vault key",
+   "palette": "coinbase blue and white"
+  },
+  {
+   "ticker": "HOOD",
+   "name": "Robinhood",
+   "kind": "stock",
+   "desc": "a nimble green archer in a feathered cap with a longbow, feather emblem on the tunic",
+   "palette": "robinhood green and white"
+  },
+  {
+   "ticker": "MSTR",
+   "name": "MicroStrategy",
+   "kind": "stock",
+   "desc": "a stoic orange-and-black strategist hoarding a small stack of golden coins behind a tower shield",
+   "palette": "orange and charcoal"
+  },
+  {
+   "ticker": "SPY",
+   "name": "S and P 500",
+   "kind": "stock",
+   "desc": "a broad-shouldered index guardian in navy with tiny stars on the cloak, balanced scales",
+   "palette": "navy and gold"
+  },
+  {
+   "ticker": "QQQ",
+   "name": "Nasdaq 100",
+   "kind": "stock",
+   "desc": "an electric-blue futurist with three stacked chevrons on the chest, holographic ribbons",
+   "palette": "nasdaq blue and cyan"
+  },
+  {
+   "ticker": "DIS",
+   "name": "Disney",
+   "kind": "stock",
+   "desc": "a whimsical storyteller in a midnight-blue cloak with a castle-silhouette emblem and a sparkle wand",
+   "palette": "midnight blue and silver sparkle"
+  },
+  {
+   "ticker": "JPM",
+   "name": "JPMorgan",
+   "kind": "stock",
+   "desc": "a stern banker-knight in deep brown and gold with a chevron crest on a tower shield",
+   "palette": "deep brown and gold"
+  },
+  {
+   "ticker": "V",
+   "name": "Visa",
+   "kind": "stock",
+   "desc": "a swift navy-and-gold courier with a bold single chevron stripe across the chest",
+   "palette": "visa navy and golden yellow"
+  },
+  {
+   "ticker": "PLTR",
+   "name": "Palantir",
+   "kind": "stock",
+   "desc": "a hooded analyst in black holding a glowing dark crystal orb that shows shifting data",
+   "palette": "obsidian black and pale blue glow"
+  },
+  {
+   "ticker": "SBUX",
+   "name": "Starbucks",
+   "kind": "stock",
+   "desc": "a cheerful green barista-knight with a circular crest on the chest and a steaming cup as a mace",
+   "palette": "starbucks green and cream"
+  },
+  {
+   "ticker": "BONK",
+   "name": "Bonk",
+   "kind": "meme",
+   "desc": "a hyperactive orange Shiba dog wielding an oversized cartoon baseball bat, tongue out, goggles",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "WIF",
+   "name": "dogwifhat",
+   "kind": "meme",
+   "desc": "a serene Shiba dog wearing an oversized knitted pink beanie that flops over one eye",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "POPCAT",
+   "name": "Popcat",
+   "kind": "meme",
+   "desc": "a wide-mouthed white cat mid-POP with a comically huge open mouth, paws raised",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "PNUT",
+   "name": "Peanut the Squirrel",
+   "kind": "meme",
+   "desc": "a plucky squirrel in a tiny cape holding an acorn like a grenade",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "FWOG",
+   "name": "Fwog",
+   "kind": "meme",
+   "desc": "a dopey pastel-green frog with enormous round eyes sitting upright, goofy smile",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "GOAT",
+   "name": "Goatseus Maximus",
+   "kind": "meme",
+   "desc": "a mystical goat prophet in tattered robes with glowing terminal-green eyes",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "CHILLGUY",
+   "name": "Chill Guy",
+   "kind": "meme",
+   "desc": "a laid-back grey dog in a blue sweater and jeans, hands in pockets, smug half-smile",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "MOODENG",
+   "name": "Moo Deng",
+   "kind": "meme",
+   "desc": "a chubby baby pygmy hippo mid-bounce, glossy wet skin, tiny defiant expression",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "AI16Z",
+   "name": "ai16z",
+   "kind": "meme",
+   "desc": "a cyber-monk android with a glowing circuit halo and a data-scroll in hand",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "TRUMPC",
+   "name": "Trump Coin",
+   "kind": "meme",
+   "desc": "a cartoon golden-haired tycoon in a navy suit with an oversized red tie, thumbs up",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "MEW",
+   "name": "cat in a dogs world",
+   "kind": "meme",
+   "desc": "a tiny brave white kitten standing with its chest puffed out",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "CATS",
+   "name": "Cats",
+   "kind": "meme",
+   "desc": "a mischievous alley cat in a torn hoodie holding a fish bone like a sword",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "PEPE",
+   "name": "Pepe",
+   "kind": "meme",
+   "desc": "a classic green frog in a brown coat, smug knowing grin, hands clasped",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "BRETT",
+   "name": "Brett",
+   "kind": "meme",
+   "desc": "a blue-skinned blocky cartoon guy in a black tee, confident wide stance",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "MOG",
+   "name": "Mog",
+   "kind": "meme",
+   "desc": "a sleek smug cat with glowing laser eyes and a tiny gold chain",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "PONKE",
+   "name": "Ponke",
+   "kind": "meme",
+   "desc": "a wild-eyed monkey in a leather jacket holding a banana like a wrench",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "MICHI",
+   "name": "Michi",
+   "kind": "meme",
+   "desc": "a fluffy white-and-orange cat in tiny sunglasses, arms crossed",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "GIGA",
+   "name": "Gigachad",
+   "kind": "meme",
+   "desc": "a chiselled marble-statue man in a heroic pose, impossibly square jaw",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "RETARDIO",
+   "name": "Retardio",
+   "kind": "meme",
+   "desc": "a goofy purple-hooded creature with crossed eyes and a lopsided grin",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "SLERF",
+   "name": "Slerf",
+   "kind": "meme",
+   "desc": "a sleepy pastel sloth clinging to a branch, one eye half open",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "BOME",
+   "name": "Book of Meme",
+   "kind": "meme",
+   "desc": "an ancient glowing spellbook with cartoon eyes and tiny arms, floating",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "SILLY",
+   "name": "Silly Dragon",
+   "kind": "meme",
+   "desc": "a tiny round pastel dragon with stubby wings and a proud puffed chest",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "HARAMBE",
+   "name": "Harambe",
+   "kind": "meme",
+   "desc": "a noble gorilla guardian standing tall with a gentle protective expression",
+   "palette": "bright saturated meme"
+  },
+  {
+   "ticker": "WEN",
+   "name": "Wen",
+   "kind": "meme",
+   "desc": "an impatient cartoon creature tapping a wrist watch, eyebrow raised",
+   "palette": "bright saturated meme"
+  }
+ ]
+}

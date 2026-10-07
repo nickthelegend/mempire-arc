@@ -1,0 +1,19 @@
+# Mempire — the playable build.
+#
+# This file has to exist as a real file. Without it the SPA rewrite answered
+# /robots.txt with index.html and a 200, which is a soft 404: a crawler asks
+# for crawl rules and gets a page of HTML it cannot parse. Some treat an
+# unparseable robots.txt as a reason to back off entirely.
+#
+# The game itself is worth indexing — people search for it by name — but the
+# marketing site is where the readable content lives, so that is what carries
+# the sitemap.
+
+User-agent: *
+Allow: /
+
+# Deep links into game state are not pages. They render the same shell as /
+# and would be indexed as duplicates of it.
+Disallow: /battle
+
+Sitemap: https://play.mempire.fun/sitemap.xml

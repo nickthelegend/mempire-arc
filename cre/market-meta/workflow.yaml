@@ -1,0 +1,26 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS FILE
+# ==========================================================================
+# Workflow-specific settings for CRE CLI targets.
+# Each target defines user-workflow and workflow-artifacts groups.
+# Settings here override CRE Project Settings File values.
+
+# ==========================================================================
+# Demo / simulation: 10-minute cron, 10-minute epochs, monad-testnet.
+staging-settings:
+  user-workflow:
+    workflow-name: "mempire-market-meta-staging"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.staging.json"
+    secrets-path: "../secrets.yaml"
+
+# ==========================================================================
+# Deployed: hourly cron, hourly epochs.
+production-settings:
+  user-workflow:
+    workflow-name: "mempire-market-meta"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: "../secrets.yaml"

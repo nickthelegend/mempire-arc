@@ -1,0 +1,31 @@
+{
+  "name": "mempire-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync-addresses.mjs",
+    "codegen": "envio codegen",
+    "typecheck": "tsc --noEmit",
+    "dev": "envio dev",
+    "start": "envio start",
+    "local:up": "./scripts/local-indexer.sh up",
+    "local:down": "./scripts/local-indexer.sh down",
+    "local:status": "./scripts/local-indexer.sh status",
+    "seed:local": "node scripts/seed-local.mjs",
+    "verify:local": "node scripts/verify-local.mjs",
+    "test": "vitest run --test-timeout=20000"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "typescript": "6.0.3",
+    "viem": "2.54.0",
+    "vitest": "4.1.0"
+  },
+  "dependencies": {
+    "envio": "3.13.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

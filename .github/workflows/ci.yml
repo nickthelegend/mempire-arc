@@ -1,0 +1,110 @@
+# Every suite that is deterministic on a CI runner.
+#
+# The chain suites (onboarding, settlement, Privy, the end-to-end game) fork
+# live Monad testnet and sign live OKX/CoinGecko quotes, and the browser pass
+# drives the full local stack; they run locally with `./scripts/test-all.sh`
+# and `node app/e2e/browser-pass.mjs` (results in docs/QUALITY.md).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: forge test
+        working-directory: contracts
+        run: forge test
+
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # npm 11: npm 10 rejects the optional TypeScript-5 peers that
+          # Privy/wagmi pull in (the app is on TypeScript 6). engines says >=24.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # `npm install`, not `npm ci`: the lockfile is generated on macOS, and npm
+      # on Linux places a few optional peers of wagmi/porto/WalletConnect
+      # differently, which `ci` rejects as "out of sync". `install` still
+      # follows the lockfile; Vercel's default install behaves the same way.
+      - run: npm install --no-audit --no-fund
+      - name: typecheck
+        run: npx tsc -b
+      - name: simulation determinism
+        run: npx tsx scripts/sim-test.ts
+      - name: lint
+        run: npx oxlint
+      - name: production build
+        run: VITE_CHAIN_ID=10143 npx vite build
+
+  relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      mongo:
+        image: mongo:7
+        ports: ['27019:27017']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: node test-auth.mjs
+      - run: node test-memstore.mjs
+      - run: node test-locker.mjs
+      - name: Kimi (against a fake Moonshot server — a test double)
+        run: node test-ai.mjs
+      - name: persistence across a restart (real MongoDB)
+        run: node test-persistence.mjs
+
+  cre:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cre/market-meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
+
+  indexer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: indexer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: indexer/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm codegen
+      - run: pnpm test

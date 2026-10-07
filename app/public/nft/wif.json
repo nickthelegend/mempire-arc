@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $WIF",
+  "symbol": "MEMFTR",
+  "description": "A serene Shiba dog wearing an oversized knitted pink beanie that flops over one eye. A Mempire fighter minted from $WIF. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_wif.png",
+  "external_url": "https://mempire.fun/card/wif",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$WIF"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "7i4sYdHpCyRFPUDJ6qA31EtBTBUgNfWnPEmcs7pmhDEF"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_wif.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

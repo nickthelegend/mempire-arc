@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+contracts/broadcast/**/dry-run/
+keys/
+*.key
+indexer/generated/
+indexer/build/
+cre/**/node_modules/
+cre/**/.env
+.vercel
+.local/
+# the throwaway test fork (server/test-chain.mjs)
+shared/deployments/31338.json
+server/shared/deployments/31338.json
+app/src/shared/deployments/31338.json
+contracts/broadcast/*/31338/

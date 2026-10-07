@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  One URL. The game is a single-page app: every screen is the same document,
+  so listing /cards, /deck and the rest would be listing the same page five
+  times and inviting a duplicate-content judgement on all of them.
+
+  The sixty-four card pages, the docs and the download page all live on
+  mempire.fun and are listed in that site's sitemap.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://play.mempire.fun/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

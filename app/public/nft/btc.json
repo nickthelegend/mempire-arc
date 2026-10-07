@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $BTC",
+  "symbol": "MEMFTR",
+  "description": "A rounded gold-and-orange armoured knight whose round chest plate IS a gleaming golden Bitcoin coin with the bitcoin currency symbol embossed in relief, tiny gold pauldrons, a short orange cape, holding a small round golden coin shield. A Mempire fighter minted from $BTC. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_btc.png",
+  "external_url": "https://mempire.fun/card/btc",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$BTC"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "ranged"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "9RRBPuMLxh9iGBkyPZMN1QEAGUWYLedAENcgqa35Gzwy"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_btc.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

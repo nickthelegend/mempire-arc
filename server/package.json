@@ -1,0 +1,23 @@
+{
+  "name": "mempire-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env index.js",
+    "start": "node index.js",
+    "sync-shared": "node sync-shared.mjs",
+    "test:onboard": "node test-onboard.mjs",
+    "test:auth": "node test-auth.mjs"
+  },
+  "dependencies": {
+    "@privy-io/node": "^0.35.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mongodb": "^6.13.0",
+    "viem": "^2.57.3",
+    "ws": "^8.21.1"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

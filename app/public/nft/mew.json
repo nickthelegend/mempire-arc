@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $MEW",
+  "symbol": "MEMFTR",
+  "description": "A tiny brave white kitten standing with its chest puffed out. A Mempire fighter minted from $MEW. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_mew.png",
+  "external_url": "https://mempire.fun/card/mew",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$MEW"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Meme"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "spell"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "BbUgNb6M165dshYxy55HL8JqYv8K7AjaQDtGUmoDjT4g"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_mew.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

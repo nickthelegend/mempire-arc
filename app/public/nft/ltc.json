@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $LTC",
+  "symbol": "MEMFTR",
+  "description": "A silver courier knight with a slanted L-with-a-stroke coin as a chest medallion, light travel cloak. A Mempire fighter minted from $LTC. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_ltc.png",
+  "external_url": "https://mempire.fun/card/ltc",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$LTC"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "swarm"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "3pbyF77KkpPuyNeGcN8Hfw5pHEmeKM8JeVanizPeswAU"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_ltc.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

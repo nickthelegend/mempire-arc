@@ -1,0 +1,22 @@
+{
+  "name": "mempire-market-meta",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen:roster": "bun run ../scripts/gen-roster.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "bun test"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@chainlink/cre-sdk": "^1.23.0",
+    "viem": "2.57.3",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "5.9.3"
+  }
+}

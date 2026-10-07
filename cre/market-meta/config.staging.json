@@ -1,0 +1,15 @@
+{
+  "schedule": "0 */10 * * * *",
+  "epochSeconds": 600,
+  "chainSelectorName": "monad-testnet",
+  "marketMetaAddress": "0x0000000000000000000000000000000000000000",
+  "_todo_marketMetaAddress": "TODO(lead): set marketMetaAddress to shared/deployments/10143.json -> marketMeta once deployed. Zero address = compute + log the report, never write.",
+  "gasLimit": "1500000",
+  "coingeckoBaseUrl": "https://api.coingecko.com/api/v3/simple/price",
+  "pythHermesUrl": "https://pyth.dourolabs.app/hermes",
+  "pythMinWindowSeconds": 3600,
+  "httpTrigger": {
+    "enabled": false,
+    "authorizedKeys": []
+  }
+}

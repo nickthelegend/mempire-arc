@@ -1,0 +1,409 @@
+/* Mempire — Royale Arcade.
+   Clash Royale's chrome (quilted blue field, carved wood panels, fat beveled
+   buttons, outlined white lettering) carrying Mempire's content. violet
+   and teal stay as the energy accent; gold still means SOL is moving.
+   DESIGN.md is the authority. */
+:root {
+  /* field */
+  --blue-deep: #0d2a5c;
+  --blue: #14418f;
+  --blue-lit: #2160c4;
+  --blue-pale: #59a6f5;
+
+  /* carved wood panels */
+  --wood: #7a4a22;
+  --wood-lit: #96602e;
+  --wood-hi: #b9793c;
+  --wood-dark: #4a2a11;
+  --wood-edge: #2e1908;
+
+  /* controls */
+  --btn-gold: #f5b423;
+  --btn-gold-hi: #ffd766;
+  --btn-gold-dark: #a86e07;
+  --btn-blue: #3aa0f7;
+  --btn-blue-hi: #7cc6ff;
+  --btn-blue-dark: #17629f;
+  --btn-green: #52c41a;
+  --btn-green-hi: #8ce85a;
+  --btn-green-dark: #2c7a06;
+
+  /* meaning */
+  --purple: #9945ff;
+  --teal: #14f195;
+  --gold: #ffc422;
+  --gold-hi: #ffe38a;
+  --elixir: #d838d8;
+  --red: #ff4d6d;
+
+  /* ink — secondary text must stay legible on the quilt, so it is a light
+     tint of the field rather than a mid grey-blue that sinks into it */
+  --text: #ffffff;
+  --dim: #dbe8ff;
+  --dim-on-wood: #f6e6cc;
+  --ink: #10203f;
+
+  /* Error text sitting directly on wood. Bare --red is 2.3:1 there — unreadable.
+     This clears AA at 12.5px without needing a plate behind it. */
+  --red-on-wood: #ffd3da;
+
+  --grad-solana: linear-gradient(96deg, var(--purple), var(--teal));
+
+  --font-display: 'Lilita One', system-ui, sans-serif;
+  --font-ui: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-mono: 'Martian Mono', monospace;
+
+  --r-panel: 14px;
+  --r-card: 10px;
+  --r-pill: 12px;
+  --r-sheet: 22px;
+
+  /* One navy for every recessed surface. Hand-rolled recesses had drifted
+     across eight alpha values, which reads as sloppiness when two sit adjacent. */
+  --recess: rgba(9, 22, 48, 0.55);
+
+  --scrim: rgba(6, 16, 38, 0.82);
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.3, 1);
+
+  /* Carried over from the dark world so surfaces stay coherent while screens
+     migrate to .panel / .well. Recessed navy, not the old near-black. */
+  --void: var(--ink);
+  --surface: #12295a;
+  --raised: #1c3c78;
+  --border: rgba(0, 0, 0, 0.45);
+  --glow-purple: 0 0 22px rgba(153, 69, 255, 0.4);
+  --glow-teal: 0 0 18px rgba(20, 241, 149, 0.35);
+  --shadow-raise: 0 6px 16px rgba(0, 0, 0, 0.5);
+
+  /* the bevel language: every raised thing gets a top highlight + hard base */
+  --bevel-out: inset 0 2px 0 rgba(255, 255, 255, 0.4), inset 0 -3px 0 rgba(0, 0, 0, 0.28);
+  --bevel-in: inset 0 3px 8px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  background: var(--blue-deep);
+  /* every glyph sits on a busy patterned field — this is what keeps body copy
+     readable without resorting to opaque plates behind all of it */
+  text-shadow: 0 1px 2px rgba(6, 16, 38, 0.85);
+}
+
+/* Never let small print drop below a readable size on the quilt. */
+p, span, div, button, a, li { text-rendering: optimizeLegibility; }
+
+button {
+  font-family: var(--font-ui);
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled { cursor: not-allowed; }
+
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid var(--gold-hi);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection { background: rgba(153, 69, 255, 0.5); }
+
+/* ── The quilted field ───────────────────────────────────────────────────── */
+.quilt {
+  background-color: var(--blue);
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055) 25%, transparent 25%),
+    linear-gradient(225deg, rgba(255, 255, 255, 0.055) 25%, transparent 25%),
+    linear-gradient(45deg, rgba(0, 0, 0, 0.14) 25%, transparent 25%),
+    linear-gradient(315deg, rgba(0, 0, 0, 0.14) 25%, transparent 25%),
+    radial-gradient(120% 80% at 50% 0%, var(--blue-lit), var(--blue-deep) 72%);
+  background-size: 46px 46px, 46px 46px, 46px 46px, 46px 46px, 100% 100%;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0;
+}
+
+/* ── The hall ────────────────────────────────────────────────────────────── */
+/* What sits behind the game column on a wide screen.
+ *
+ * The rails used to carry the same quilt as the column, which made the frame
+ * and the game read as one continuous surface — the column stopped being an
+ * object and became a stripe of slightly different lighting. This is the wall
+ * of the room the arena is in: a deep violet drape, a gold damask lattice at a
+ * scale far larger than the quilt's 46px so the two never read as the same
+ * cloth, and a vignette that sinks the outer edges.
+ *
+ * It is deliberately darker and lower in contrast than the column. The hall is
+ * scenery; anything here bright enough to compete would be a bug.
+ */
+.hall {
+  background-color: #1b1140;
+  background-image:
+    /* the gold lattice — two diagonals crossing into a wide diamond damask */
+    repeating-linear-gradient(45deg,
+      rgba(255, 196, 34, 0.05) 0 2px, transparent 2px 84px),
+    repeating-linear-gradient(-45deg,
+      rgba(255, 196, 34, 0.05) 0 2px, transparent 2px 84px),
+    /* a smaller counter-lattice, offset, so the weave has a second order to it */
+    repeating-linear-gradient(45deg,
+      rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(-45deg,
+      rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 28px),
+    /* velvet: vertical banding, as if the drape has fall to it */
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 7px),
+    /* the room's own light, from above, and the corners falling away */
+    radial-gradient(130% 90% at 50% -10%,
+      #4a2a86 0%, #2a1660 42%, #150d33 100%);
+  background-size:
+    84px 84px, 84px 84px, 28px 28px, 28px 28px, 7px 100%, 100% 100%;
+}
+
+/* ── Type ────────────────────────────────────────────────────────────────── */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--text);
+  /* The stroke is a fraction of the em, so a size that halves must halve it too
+     — a fixed 3px on a 13px numeral swallows the glyph into a lump. */
+  -webkit-text-stroke: var(--display-stroke, 3px) var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Display type below 19px. Pair with every .display under the DESIGN.md floor. */
+.display--sm { --display-stroke: 1.8px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
+
+.display--gold {
+  background: linear-gradient(180deg, #fff2c4 4%, var(--gold-hi) 30%, var(--gold) 60%, #c58a06 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: var(--display-stroke, 3px) var(--ink);
+  paint-order: stroke fill;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5));
+}
+
+/* Martian Mono runs wide, but shrinking it pushed strings under the 12px floor
+   when nested in .fine. Keep the parent size and let it be wide. */
+.mono { font-family: var(--font-mono); font-size: 1em; letter-spacing: -0.02em; }
+
+.money {
+  font-family: var(--font-display);
+  color: var(--gold-hi);
+  -webkit-text-stroke: 2.5px var(--ink);
+  paint-order: stroke fill;
+  letter-spacing: 0.02em;
+}
+
+.label {
+  /* 12px is the floor for every readable string in this app. Anything smaller
+     disappears against the quilt, which is the exact complaint that drove it. */
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-shadow: 0 1px 2px rgba(6, 16, 38, 0.9);
+}
+
+/* Fine print — still must be readable, so it never goes below 12px or dim. */
+.fine {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+/* Anything sitting on a wood panel needs the warm tint, not the blue one. */
+.panel .label, .wood .label, .on-wood { color: var(--dim-on-wood); }
+.wood > p, .wood > p .fine { color: var(--dim-on-wood); }
+
+/* ── Carved surfaces ─────────────────────────────────────────────────────── */
+
+/* The wood surface itself. `.panel` is a wood sheet with a carved border;
+   the tab bar and battle HUD are full-bleed wood with their own edges, so they
+   take `.wood` alone — at the same grain scale, which is the point of the split. */
+.wood, .panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 34%),
+    url('/art/wood_seamless.png') center / 300px repeat,
+    var(--wood);
+}
+
+.panel {
+  border: 3px solid var(--wood-edge);
+  border-radius: var(--r-panel);
+  box-shadow: var(--bevel-out), 0 4px 0 var(--wood-edge), 0 8px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* recessed well, for content sitting inside a panel */
+.well {
+  background: var(--recess);
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  border-radius: var(--r-card);
+  box-shadow: var(--bevel-in);
+}
+
+/* ── Bottom sheets ───────────────────────────────────────────────────────── */
+/* Four sheets each declared their own global `sheetUp` with different values,
+   so whichever mounted last won for all of them. One definition, one class. */
+@keyframes sheetUp {
+  from { transform: translateY(42%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.sheet {
+  position: absolute;
+  bottom: 0;
+  width: min(100vw, 430px);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  border-bottom: none;
+  padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: sheetUp 240ms var(--ease-snap);
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+/* Shared keyframes live here rather than in inline <style> tags, because a
+   global name declared per-component means the last one mounted wins for all of
+   them — a bug this project already shipped once with `sheetUp`. */
+
+/* The settle title lands. Oversized → baseline, with the overshoot bled off by
+   an exponential ease-out so it reads as weight, not as a bounce. */
+@keyframes resultStamp {
+  0% { transform: scale(1.55); opacity: 0; }
+  55% { opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* A crown arriving on the scoreline. Punches past its resting size, then sets. */
+@keyframes crownSlam {
+  0% { transform: scale(2.4) rotate(-14deg); opacity: 0; }
+  40% { opacity: 1; }
+  100% { transform: scale(1.05) rotate(0deg); opacity: 1; }
+}
+
+/* A resource number that just changed. Scale only — never colour, so it cannot
+   fight the gold-means-money rule. */
+@keyframes valueBump {
+  0% { transform: scale(1); }
+  38% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+/* A card becoming playable. The affordance turning on is gameplay information,
+   so it gets a beat rather than only an opacity ramp. */
+@keyframes affordPop {
+  0% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(-4px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* A card landing in a deck slot. */
+@keyframes slotDrop {
+  0% { transform: translateY(-14px) scale(0.86); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Route change inside the column. Short, and from an already-visible default so
+   a failed script never leaves a blank screen. */
+@keyframes screenIn {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* `backwards`, never `both`.
+   `both` keeps the final keyframe applied forever, which leaves an identity
+   transform on the element — and *any* transform makes it the containing block
+   for `position: fixed` descendants. With gutters on desktop that shifted every
+   fixed overlay rendered inside <main> (sheets, the tutorial spotlight) right by
+   the gutter width. `backwards` styles the pre-animation frame and stops
+   applying once it finishes, so no transform lingers. */
+.screen-in { animation: screenIn 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+
+/* The primary CTA breathes so the eye finds it on a busy field. Transform only,
+   paused when the tab is hidden by the reduced-motion rule below. */
+@keyframes ctaBreathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* An unsold ad board is scenery until someone looks at it. */
+.adboard {
+  opacity: 0.58;
+  filter: saturate(0.75);
+  transition: opacity 200ms var(--ease-snap), filter 200ms var(--ease-snap);
+}
+.adboard:hover,
+.adboard:focus-within { opacity: 1; filter: none; }
+
+/* ── Reserved gutters ────────────────────────────────────────────────────── */
+/* The layout law keeps the space either side of the column for ads. There is no
+   such space on a phone, so below 900px the gutters do not exist at all — the
+   game never surrenders its own column to an ad. */
+.gutter { display: none; }
+
+@media (min-width: 900px) {
+  .gutter {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 420px;
+  }
+}
+
+/* Buttons physically depress into their own base edge. */
+.btn-3d:not(:disabled):active {
+  transform: translateY(4px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.2),
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
+.btn-3d:not(:disabled):hover { filter: brightness(1.06); }
+
+/* Flat text rows inside a popover — the one place a control legitimately has no
+   bevel, so it earns its feedback from the surface behind it instead. */
+.menu-item {
+  transition: background 140ms var(--ease-snap);
+}
+.menu-item:hover { background: rgba(255, 255, 255, 0.09); }
+.menu-item:active { background: rgba(0, 0, 0, 0.22); }
+
+/* Bare glyph controls (close ×, mute). Round, so the feedback is a disc. */
+.icon-btn {
+  border-radius: 50%;
+  transition: background 140ms var(--ease-snap), transform 90ms var(--ease-snap);
+}
+.icon-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.icon-btn:active { background: rgba(0, 0, 0, 0.25); transform: scale(0.92); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    /* Collapsing the duration of an *infinite* animation does not stop it — it
+       runs it thousands of times a second, which is worse than the motion it was
+       meant to remove. Pinning the count to 1 ends it after a single instant
+       pass, so looping decoration (the CTA breathe, the chest bob, the pulsing
+       search crowns) genuinely stops. */
+    animation-iteration-count: 1 !important;
+  }
+}

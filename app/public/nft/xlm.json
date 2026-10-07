@@ -1,0 +1,34 @@
+{
+  "name": "Mempire $XLM",
+  "symbol": "MEMFTR",
+  "description": "A luminous herald with a soaring rocket-shaped light streak emblem on the chest, white-and-gold cloak. A Mempire fighter minted from $XLM. Fielded in real-time 1v1 matches on Solana, with card plays running on a MagicBlock ephemeral rollup.",
+  "image": "https://play.mempire.fun/art/card_xlm.png",
+  "external_url": "https://mempire.fun/card/xlm",
+  "attributes": [
+    {
+      "trait_type": "Ticker",
+      "value": "$XLM"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Major"
+    },
+    {
+      "trait_type": "Archetype",
+      "value": "tank"
+    },
+    {
+      "trait_type": "Coin Mint",
+      "value": "78JNuVeogJqE3jr8W6SeW79hxCLWdomtSh4ZdNbta9wQ"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://play.mempire.fun/art/card_xlm.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}
