@@ -55,8 +55,8 @@ const DECK_SIZE = 8;
  * eight cards. Anything not listed here comes after, in roster order.
  */
 const PREFERRED = [
-  'BTC', 'ETH', 'SOL', 'DOGE', 'LINK', 'BONK', 'PEPE', 'NVDA',
-  'WIF', 'SHIB', 'TSLA', 'AAPL', 'XRP', 'LINK', 'POPCAT', 'SPY',
+  'BTC', 'ETH', 'SOL', 'LINK', 'PAXG', 'EUR', 'XRP', 'AVAX',
+  'BNB', 'UNI', 'JPY', 'HYPE', 'AAVE', 'TRX', 'BCH', 'AUD',
 ];
 
 /**

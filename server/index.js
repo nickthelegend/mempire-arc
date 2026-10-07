@@ -16,7 +16,8 @@ import { CHAIN_ID, RPC_URL, deployment, normAddress } from './chain.js';
 import { verifySettledMatch } from './chain-verify.js';
 import { registerClanRoutes } from './clans.js';
 import { keeperStatus, startKeeper } from './keeper.js';
-import { pythMode } from './pyth.js';
+import { mirrorStatus, startMirror } from './mirror.js';
+import { ccipWatchStatus, startCcipWatch } from './ccip-watch.js';
 import { registerLockerRoutes } from './locker.js';
 import { createMemoryDb } from './memstore.js';
 import { registerMarketRoutes } from './market.js';
@@ -24,7 +25,6 @@ import { registerAiRoutes } from './ai.js';
 import { registerNftRoutes } from './nft.js';
 import { registerOnboardRoutes } from './onboard.js';
 import { registerPlayerRoutes } from './player.js';
-import { registerPythRoutes } from './pyth.js';
 import { relayerAddress } from './relayer.js';
 import { recordEvent, registerTelemetryRoutes } from './telemetry.js';
 import { registerInsightRoutes } from './insights.js';
@@ -111,7 +111,7 @@ let limit = null;
  * A bucket for the public GETs that are not free to serve.
  *
  * Most reads here are a Mongo lookup and the shared limiter rightly waves them
- * through. Some are not: onboarding status, card metadata and the Pyth proxy
+ * through. Some are not: onboarding status and card metadata
  * each spend the relay's RPC quota or its Hermes key, and the RPC quota is the
  * same one `chain-verify` needs to establish who was paid what. Leaving them on
  * the read exemption meant an anonymous loop against a status endpoint could
@@ -144,12 +144,11 @@ const CURRENCIES = ['USDC'];
 const NET_FIELD = { USDC: 'netUsdc' };
 
 /*
- * Chain-facing reads that need no database: roster prices, the Pyth update
- * proxy, and card metadata. Registered at load so they sit ahead of the
+ * Chain-facing reads that need no database: roster prices (Chainlink) and
+ * card metadata. Registered at load so they sit ahead of the
  * catch-all error handler like everything else.
  */
 registerMarketRoutes(app);
-registerPythRoutes(app, readGate);
 registerNftRoutes(app, readGate);
 registerAiRoutes(app);
 
@@ -159,8 +158,11 @@ app.get('/api/health', async (_req, res) => {
     rpc: RPC_URL,
     deployment: Boolean(deployment),
     relayer: relayerAddress(),
-    oracle: pythMode(),
+    prices: deployment?.priceFeeds ?? null,
+    ccipGateway: deployment?.ccipGateway ?? null,
     keeper: keeperStatus(),
+    mirror: mirrorStatus(),
+    ccip: ccipWatchStatus(),
   };
   if (!client) return res.json({ ok: true, db: 'memory', persistent: false, chain });
   try {
@@ -710,6 +712,8 @@ const server = await (async () => {
   const httpServer = app.listen(PORT, () => console.log(`mempire api on :${PORT}`));
   registerMatchmaker(httpServer, db);
   startKeeper();
+  startMirror();
+  startCcipWatch();
   return httpServer;
 })().catch((e) => {
   console.error(`startup failed: ${e?.message ?? e}`);

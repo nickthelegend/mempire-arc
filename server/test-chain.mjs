@@ -1,10 +1,11 @@
 /**
  * A throwaway chain for the suites that write to it.
  *
- * A fork of Arc testnet on its own port and chain id (8711 / 31338), run by
+ * A fork of Arc mainnet on its own port and chain id (8711 / 31338), run by
  * Circle's Arc Foundry (`arc-anvil --network arc`: plain anvil can fork Arc but
  * can't move its native USDC), with our contracts deployed by `DeployLocal` —
- * so Arc's real USDC is there, exactly as on the dev chain. The suites warp
+ * so Arc's real USDC, Chainlink's Data Feeds and CCIP router are there, exactly
+ * as on the dev chain. Nothing is ever broadcast to mainnet. The suites warp
  * time; doing that on the dev chain (8710 / 31337) would leave every live price
  * "stale" for whoever is playing on it.
  *
@@ -25,7 +26,7 @@ import { DEV_BASE, DEV_MNEMONIC } from './test-util.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const TEST_PORT = Number(process.env.TEST_CHAIN_PORT ?? 8711);
 export const TEST_CHAIN_ID = 31338;
-const FORK_URL = process.env.FORK_URL ?? 'https://rpc.testnet.arc.io';
+const FORK_URL = process.env.FORK_URL ?? 'https://rpc.mainnet.arc.io';
 const ANVIL = process.env.ARC_ANVIL ?? 'arc-anvil';
 const FORGE = process.env.ARC_FORGE ?? 'forge';
 const rootDep = `${ROOT}shared/deployments/${TEST_CHAIN_ID}.json`;

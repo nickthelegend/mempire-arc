@@ -19,8 +19,8 @@ const MAX_LEVEL = 10;
 
 const KIND_PHRASE = {
   crypto: 'a major crypto asset',
-  meme: 'a memecoin',
-  stock: 'a tokenised stock',
+  defi: 'a DeFi token',
+  rwa: 'a real-world asset (gold or a fiat currency)',
 };
 
 /** True when the call reached the contract and the contract said no. */
@@ -28,7 +28,7 @@ function reverted(e) {
   return e instanceof BaseError && Boolean(e.walk((x) => x instanceof ContractFunctionRevertedError));
 }
 
-/** A Pyth price at its exponent, exactly — 18742000000 at -8 is "187.42". */
+/** A Chainlink answer at its exponent, exactly — 18742000000 at -8 is "187.42". */
 function formatPrice(price, expo) {
   const p = BigInt(price);
   return expo < 0 ? formatUnits(p, -expo) : (p * 10n ** BigInt(expo)).toString();
@@ -66,7 +66,7 @@ export function registerNftRoutes(app, gate) {
       { trait_type: 'Archetype', value: archetype },
     ];
     // Starter and chest cards record no price; only a card minted against a
-    // live Pyth update carries one.
+    // live Chainlink feed read carries one.
     if (BigInt(card.mintPrice) !== 0n) {
       attributes.push({ trait_type: 'Mint price (USD)', value: formatPrice(card.mintPrice, Number(card.mintExpo)) });
     }

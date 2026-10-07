@@ -31,9 +31,8 @@ export function rateLimiter(db, { capacity = 80, refillPerSec = 5, includeReads 
      * Reads are free by default, and must not be on a credentialed proxy.
      *
      * Exempting GET is right for our own cheap endpoints. It is wrong for a
-     * route that spends someone else's quota on every call: the Pyth proxy
-     * carries this project's Hermes key, and the chain-backed reads spend the
-     * relay's RPC quota, so an anonymous loop over either bills us and
+     * route that spends someone else's quota on every call: the chain-backed
+     * reads spend the relay's RPC quota, so an anonymous loop over them bills us and
      * eventually takes the route down for everyone. Those routes pass
      * `includeReads`.
      */

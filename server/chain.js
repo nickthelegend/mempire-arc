@@ -54,7 +54,7 @@ export const abis = {
   arena: abiOf('MempireArena'),
   token: abiOf('MempireToken'),
   marketMeta: abiOf('MarketMeta'),
-  oracle: abiOf('SignedPriceOracle'),
+  gateway: abiOf('MempireCCIPGateway'),
   erc20: erc20Abi,
 };
 
