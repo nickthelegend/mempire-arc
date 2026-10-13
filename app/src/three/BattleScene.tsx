@@ -99,6 +99,13 @@ function CameraRig({ seat }: { seat: 0 | 1 }) {
   useFrame((_, dt) => {
     vfx.shakeOffset(Math.min(dt, 0.05), shake.current);
     camera.position.addVectors(home.current, shake.current);
+    // Slow-mo punch-in: narrow the lens while a tower falls, then ease back.
+    const cam = camera as THREE.PerspectiveCamera;
+    if (cam.isPerspectiveCamera) {
+      const base = (cam.userData.baseFov as number | undefined) ?? (cam.userData.baseFov = cam.fov);
+      const want = base * (1 - 0.16 * vfx.slowAmount);
+      if (Math.abs(cam.fov - want) > 0.01) { cam.fov += (want - cam.fov) * Math.min(1, dt * 10); cam.updateProjectionMatrix(); }
+    }
   });
 
   useEffect(() => {
@@ -259,9 +266,12 @@ function TowerFire() {
         const x = t.x / FP;
         const z = t.y / FP;
         const th = t.kind === 'king' ? 2.6 : 2.0;
+        vfx.damage(x, th + 1.2, z, lastHp - Math.max(0, t.hp), '#ffd34d', true);
         if (t.hp <= 0) {
           // A crown falling. Everything at once, and the biggest kick in the
-          // game — if any moment earns it, this is the one.
+          // game — if any moment earns it, this is the one: slow motion and a
+          // camera punch-in (presentation only; the sim never slows).
+          vfx.slowmo(1.5, 0.22);
           vfx.kick(0.42);
           vfx.shockwave(x, z, t.owner === 0 ? PALETTE.teal : PALETTE.red, 2.6);
           vfx.dust(x, z, 3);

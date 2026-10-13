@@ -120,6 +120,24 @@ class Vfx {
   /** Seeded so a shake is smooth noise rather than per-frame static. */
   private shakeT = 0;
 
+  /*
+   * Damage numbers: pooled sprites over a small texture cache. A number is
+   * drawn once per (text, colour) and reused, so a big push costs sprite
+   * moves, not canvas work.
+   */
+  private numbers: { sprite: THREE.Sprite; life: number; vy: number }[] = [];
+  private idleNumbers: THREE.Sprite[] = [];
+  private numberTex = new Map<string, THREE.CanvasTexture>();
+
+  /*
+   * Slow motion, for the moment a tower falls. Presentation only: the sim is
+   * deterministic lockstep and never slows. Effects, the camera punch-in and a
+   * replay's playback read `timeScale`; a live match's clock does not.
+   */
+  private slowT = 0;
+  private slowLen = 0;
+  private slowScale = 1;
+
   constructor() {
     // Effects are additive-ish overlays: they must never occlude a unit, and
     // sorting them against each other is wasted work at this size.
@@ -390,8 +408,71 @@ class Vfx {
     this.shakeAmt *= Math.exp(-dt * 9);
   }
 
+  /** Pop a damage number above a hit. `big` for towers. */
+  damage(x: number, y: number, z: number, amount: number, color: string, big = false): void {
+    if (amount <= 0) return;
+    const text = `-${Math.round(amount)}`;
+    const key = `${text}|${color}|${big ? 1 : 0}`;
+    let tex = this.numberTex.get(key);
+    if (!tex) {
+      if (this.numberTex.size > 160) { for (const t of this.numberTex.values()) t.dispose(); this.numberTex.clear(); }
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 64;
+      const g = c.getContext('2d')!;
+      g.font = `900 ${big ? 46 : 38}px system-ui, -apple-system, sans-serif`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 9; g.strokeStyle = '#120b1f'; g.strokeText(text, 64, 34);
+      g.fillStyle = color; g.fillText(text, 64, 34);
+      tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.numberTex.set(key, tex);
+    }
+    const sprite = this.idleNumbers.pop() ?? (() => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
+      sp.renderOrder = 20;
+      this.group.add(sp);
+      return sp;
+    })();
+    const mat = sprite.material as THREE.SpriteMaterial;
+    mat.map = tex; mat.opacity = 1; mat.needsUpdate = true;
+    const w = big ? 2.0 : 1.4;
+    sprite.scale.set(w, w / 2, 1);
+    sprite.position.set(x + (Math.random() - 0.5) * 0.5, y, z);
+    sprite.visible = true;
+    // Cap the crowd: the oldest number makes way.
+    if (this.numbers.length >= 48) { const old = this.numbers.shift()!; old.sprite.visible = false; this.idleNumbers.push(old.sprite); }
+    this.numbers.push({ sprite, life: big ? 1.1 : 0.8, vy: big ? 1.6 : 1.9 });
+  }
+
+  /** Start a slow-motion window: `scale` of normal speed for `seconds` (real time). */
+  slowmo(seconds = 1.4, scale = 0.25): void {
+    this.slowT = seconds; this.slowLen = seconds; this.slowScale = scale;
+  }
+
+  /** 1 normally; eases from `scale` back to 1 over the last 30% of a slow-mo. */
+  get timeScale(): number {
+    if (this.slowT <= 0) return 1;
+    const left = this.slowT / this.slowLen;
+    return left > 0.3 ? this.slowScale : this.slowScale + (1 - this.slowScale) * (1 - left / 0.3);
+  }
+
+  /** 0..1, how deep into a slow-mo we are — drives the camera punch-in. */
+  get slowAmount(): number {
+    return this.slowT <= 0 ? 0 : (1 - this.timeScale) / (1 - this.slowScale || 1);
+  }
+
   /** Advance every effect. Called once per frame from the scene. */
-  update(dt: number, camera: THREE.Camera): void {
+  update(dtReal: number, camera: THREE.Camera): void {
+    const dt = dtReal * this.timeScale;
+    if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dtReal);
+    for (let i = this.numbers.length - 1; i >= 0; i -= 1) {
+      const n = this.numbers[i];
+      n.life -= dt;
+      if (n.life <= 0) { n.sprite.visible = false; this.numbers.splice(i, 1); this.idleNumbers.push(n.sprite); continue; }
+      n.sprite.position.y += n.vy * dt;
+      n.vy *= Math.exp(-dt * 2.5);
+      (n.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, n.life * 2.2);
+    }
     for (let i = this.live.length - 1; i >= 0; i -= 1) {
       const p = this.live[i];
       p.life -= dt;
@@ -455,6 +536,10 @@ class Vfx {
     this.idleShots.push(...this.shots);
     this.shots.length = 0;
     this.shakeAmt = 0;
+    for (const n of this.numbers) n.sprite.visible = false;
+    this.idleNumbers.push(...this.numbers.map((n) => n.sprite));
+    this.numbers.length = 0;
+    this.slowT = 0;
   }
 }
 

@@ -162,6 +162,9 @@ interface LiveUnit {
   height: number;
   archetype: number;
   lastHp: number;
+  /** Damage not yet shown as a number, and when the last number was shown (s). */
+  dmgAcc: number;
+  dmgAt: number;
   spawning: number;
   hitFlash: number;
   dying: number;
@@ -381,7 +384,7 @@ export function UnitsBillboard() {
       group, sprite, mat, shadow, shadowMat, ring, ringDone: false,
       bar, barFill, barFillMat, barWidth, hpShown: 1,
       height: h, archetype: u.archetype,
-      lastHp: u.hp, spawning: 0, hitFlash: 0, dying: 0,
+      lastHp: u.hp, spawning: 0, hitFlash: 0, dying: 0, dmgAcc: 0, dmgAt: 0,
       phase: 0, strideDist: 0, speed: 0,
       lastCooldown: u.cooldown, cycle: 0, strike: 0, strikeHold: 0, landPunch: 0,
       facing: 1, recoilX: 0, recoilZ: 0,
@@ -560,6 +563,15 @@ export function UnitsBillboard() {
 
       if (u.hp < lu.lastHp) {
         lu.hitFlash = HIT_FLASH;
+        // Damage numbers, batched per unit so a swarm reads as numbers, not noise.
+        lu.dmgAcc += lu.lastHp - Math.max(0, u.hp);
+        const now = _state.clock.elapsedTime;
+        if (now - lu.dmgAt > 0.28) {
+          // Your fighters' losses in red, the enemy's in white.
+          vfx.damage(lu.group.position.x, 1.9, lu.group.position.z, lu.dmgAcc, u.owner === store.perspective ? '#ff8a7a' : '#ffffff');
+          lu.dmgAcc = 0;
+          lu.dmgAt = now;
+        }
         // Knocked back along the incoming blow. The attacker is almost always
         // whatever this unit is facing, so recoiling away from its own aim is
         // both cheap and right nearly every time.
