@@ -1,5 +1,7 @@
 import { IS_MAINNET, NETWORK_LABEL } from '../chain/provider';
 import { STAKE_USDC_NEEDED } from '../chain/session';
+import { MarketStrip } from '../components/MarketBoard';
+import { resetCoach } from '../components/Coach';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CardFrame } from '../components/CardFrame';
@@ -125,13 +127,15 @@ function ConnectHero() {
       <p className="display" style={{ fontSize: 21, lineHeight: 1.2 }}>
         Every coin is a fighter.
       </p>
-      <p style={{ color: 'var(--dim)', fontSize: 14, maxWidth: 300, margin: '-8px auto 0' }}>
-        Crypto, gold and FX as fighters, priced by Chainlink on Arc. Level them up by winning, and battle for a USDC pot.
+      <p style={{ color: 'var(--dim)', fontSize: 14, maxWidth: 320, margin: '-8px auto 0' }}>
+        Crypto, gold and FX as fighters, buffed or nerfed by today&apos;s market and priced by Chainlink on Arc.
+        Stake a dollar of USDC, and every card you drop lands on Arc while you play.
       </p>
       <div style={{ padding: '0 12px', marginTop: 6 }}>
         <Pill onClick={openPicker} tone="gold" style={{ fontSize: 19 }}>Play now</Pill>
       </div>
       <span className="label" style={{ fontSize: 12 }}>{IS_MAINNET ? 'Arc · real USDC · stakes capped' : `${NETWORK_LABEL} · passkey sign-in · no wallet needed`}</span>
+      <div style={{ textAlign: 'left' }}><MarketStrip /></div>
     </div>
   );
 }
@@ -264,7 +268,7 @@ function TopHud({ onReplayTutorial }: { onReplayTutorial: () => void }) {
               Copy address
             </button>
             <button
-              onClick={() => { resetTutorial(); setOpen(false); onReplayTutorial(); }}
+              onClick={() => { resetTutorial(); resetCoach(); setOpen(false); onReplayTutorial(); }}
               className="menu-item"
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 10px', borderRadius: 8, fontSize: 13, minHeight: 44, fontWeight: 700, color: 'var(--dim-on-wood)' }}
             >
@@ -600,6 +604,8 @@ export function Arena() {
         </div>
       </section>
 
+      <MarketStrip />
+
       {/* live feed — real settlements only */}
       <section aria-label="Recent settlements" className="well" style={{ padding: '9px 12px', overflow: 'hidden' }}>
         {settlements.rows.length > 0 ? (
@@ -741,6 +747,8 @@ function AiOpponentPicker() {
   useEffect(() => { loadAiStatus(); }, []);
   const opt = (b: AiBrain) => {
     const kimiOff = b === 'kimi' && status?.mode !== 'kimi';
+    // Kimi is off on this relay: show only the classic bot rather than a dead option.
+    if (kimiOff) return null;
     const on = brain === b && !kimiOff || (b === 'classic' && brain === 'kimi' && status?.mode !== 'kimi');
     return (
       <button

@@ -127,7 +127,7 @@ function CoinRow({ coin }: { coin: Coin }) {
           {typeof coin.change24h === 'number' && ` · ${coin.change24h >= 0 ? '+' : ''}${coin.change24h.toFixed(1)}%`}
           {coin.metaBps ? (
             <span style={{ marginLeft: 6, fontWeight: 800, color: coin.metaBps > 0 ? 'var(--teal)' : 'var(--red-on-wood)' }}>
-              {coin.metaBps > 0 ? '▲' : '▼'} {Math.abs(coin.metaBps / 100).toFixed(1)}% today
+              {coin.metaBps > 0 ? '▲' : '▼'} {Math.abs(coin.metaBps / 100).toFixed(1)}% meta
             </span>
           ) : null}
           {chainError && (
@@ -330,10 +330,20 @@ export function Cards() {
   const [openCard, setOpenCard] = useState<string | null>(null);
   const bagsRef = useRef<HTMLElement>(null);
   const [kind, setKind] = useState<AssetKind | 'all'>('all');
+  // Re-read when prices land: a fighter with no live price cannot be minted,
+  // so it is folded into one line instead of a row of disabled buttons.
+  const marketVersion = useChain((s) => s.marketVersion);
+  const pricesLoaded = COINS.some((c) => c.priceUsd > 0);
+  const mintable = (c: (typeof COINS)[number]) => c.priceUsd > 0;
   const shownCoins = useMemo(
-    () => (kind === 'all' ? COINS : COINS.filter((c) => c.kind === kind)),
-    [kind],
+    () => (kind === 'all' ? COINS : COINS.filter((c) => c.kind === kind))
+      .filter((c) => !pricesLoaded || mintable(c)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kind, pricesLoaded, marketVersion],
   );
+  const unpriced = pricesLoaded
+    ? (kind === 'all' ? COINS : COINS.filter((c) => c.kind === kind)).filter((c) => !mintable(c))
+    : [];
   const detail = useMemo(() => cards.find((c) => c.id === openCard), [cards, openCard]);
   // Cards at level 2 or better — the ones that have actually been won up.
   const levelled = cards.filter((c) => !c.seeded && c.level > 1).length;
@@ -456,6 +466,12 @@ export function Cards() {
         </div>
 
         <div className="panel" style={{ padding: '4px 14px' }}>
+          {unpriced.length > 0 && (
+            <p className="fine" style={{ fontSize: 12, color: 'var(--dim-on-wood)', margin: '0 0 6px' }}>
+              {unpriced.length} fighter{unpriced.length === 1 ? '' : 's'} without a live Chainlink price can&apos;t be minted right now
+              ({unpriced.slice(0, 4).map((c) => `$${c.ticker}`).join(', ')}{unpriced.length > 4 ? '…' : ''}).
+            </p>
+          )}
           {shownCoins.length === 0 ? (
             <p style={{ padding: '18px 0', textAlign: 'center', color: 'var(--dim-on-wood)', fontSize: 13 }}>
               nothing here yet, anon

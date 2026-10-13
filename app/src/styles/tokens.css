@@ -368,6 +368,11 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   }
 }
 
+/* On a phone the market boards have no gutter, so the meta shows as one strip
+   at the top of the Arena instead. */
+.market-strip { display: flex; }
+@media (min-width: 900px) { .market-strip { display: none; } }
+
 /* Buttons physically depress into their own base edge. */
 .btn-3d:not(:disabled):active {
   transform: translateY(4px);

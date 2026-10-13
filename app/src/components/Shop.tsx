@@ -175,6 +175,8 @@ export function Shop() {
         {offers.map((o) => {
           const coin = coinByMint(o.mint);
           if (!coin) return null;
+          // An offer that cannot be bought (no live Chainlink price yet) is not shown.
+          if (!(coin.priceUsd > 0) && offers.some((x) => (coinByMint(x.mint)?.priceUsd ?? 0) > 0)) return null;
           /*
            * Onchain, the price is the program's constant — discounts computed
            * here would be quoted and then not charged. They still apply in the
