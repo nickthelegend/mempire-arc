@@ -65,13 +65,13 @@ contracts:
       - event: RemoteEntrySet
 chains:
   - id: 5042002 # Arc testnet — native HyperSync (https://5042002.hypersync.xyz)
-    start_block: 0 # TODO: set from shared/deployments/5042002.json (startBlock)
+    start_block: 67018234 # from shared/deployments/5042002.json (startBlock)
     contracts:
       - name: MempireCards
-        address: "0x00000000000000000000000000000000000c0de1" # TODO: set from shared/deployments/5042002.json (cards)
+        address: "0x1041092bA922a5989588D06b15a62192bdA4fc9A" # from shared/deployments/5042002.json (cards)
       - name: MempireArena
-        address: "0x00000000000000000000000000000000000c0de2" # TODO: set from shared/deployments/5042002.json (arena)
+        address: "0x8808BF690f5b9265AcAF5Fb7759E73073606d551" # from shared/deployments/5042002.json (arena)
       - name: MarketMeta
-        address: "0x00000000000000000000000000000000000c0de3" # TODO: set from shared/deployments/5042002.json (marketMeta)
+        address: "0x108E70F055DFe8A11fedb5DFF32f69f9045E3b6D" # from shared/deployments/5042002.json (marketMeta)
       - name: MempireCCIPGateway
-        address: "0x00000000000000000000000000000000000c0de4" # TODO: set from shared/deployments/5042002.json (ccipGateway)
+        address: "0x79972Ff4330E1EfB8a47364Be8Da6f11c916dCa6" # from shared/deployments/5042002.json (ccipGateway)
