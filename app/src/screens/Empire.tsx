@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { MoneyRow, Pill } from '../components/ui';
 import { RankChip } from '../components/ClanBits';
 import { fmtUsdc, fmtStake, shortAddr } from '../lib/format';
-import { loadLeaderboard, type LeaderRow } from '../lib/persist';
+import { loadLeaderboard } from '../lib/persist';
+import { apiFetch } from '../lib/api';
 import { useCollection } from '../state/collection';
 import { useMatch } from '../state/match';
 import { useWallet } from '../state/wallet';
@@ -14,76 +15,125 @@ import { ArcStack } from '../components/ArcStack';
 import { fetchStrandedMatches, type ChainMatch } from '../chain/read';
 import { useEscrow } from '../state/escrow';
 
-/**
- * Top players by net USDC won, chain-verified by the relay.
- *
- * Renders nothing when the API is down or the board is empty — a leaderboard
- * with no rows is dead weight, and the rest of the screen already works
- * without the server.
+type Board = 'trophies' | 'usdc' | 'clans';
+const BOARDS: { id: Board; label: string }[] = [
+  { id: 'trophies', label: 'Trophies' },
+  { id: 'usdc', label: 'Net USDC' },
+  { id: 'clans', label: 'Clans' },
+];
+interface BoardRow { key: string; title: string; sub: string; value: string; positive: boolean; mine: boolean }
+
+/*
+ * Competition in one place: the trophy ladder, chain-verified USDC winnings,
+ * and the clans. Rows come from the relay, which credits money only from
+ * settled arena matches; harness wallets with no wins and no net are left out
+ * (a load-test wallet once sat in the public top ten at 0W · 162L, which reads
+ * as a bot farming the ladder). An empty board says it is empty rather than
+ * showing nothing.
  */
+async function loadBoard(board: Board, me: string): Promise<BoardRow[]> {
+  const meLc = me.toLowerCase();
+  if (board === 'trophies') {
+    const res = await apiFetch('/api/ladder');
+    if (!res?.ok) return [];
+    const { players } = await res.json() as { players: { address: string; name: string | null; trophies: number; wins: number; losses: number; league: string }[] };
+    return players.filter((p) => p.wins + p.losses > 0).map((p) => ({
+      key: p.address, title: p.name || shortAddr(p.address), sub: `${p.league} · ${p.wins}W · ${p.losses}L`,
+      value: `🏆 ${p.trophies}`, positive: true, mine: p.address.toLowerCase() === meLc,
+    }));
+  }
+  if (board === 'clans') {
+    const res = await apiFetch('/api/clans-top');
+    if (!res?.ok) return [];
+    const { clans } = await res.json() as { clans: { tag: string; name: string; memberCount: number; memberCap: number; crowns: number }[] };
+    return clans.map((c) => ({
+      key: c.tag, title: c.name, sub: `#${c.tag} · ${c.memberCount}/${c.memberCap} members`,
+      value: `♛ ${c.crowns}`, positive: true, mine: false,
+    }));
+  }
+  const rows = await loadLeaderboard();
+  return rows
+    .map((r) => ({ r, net: r.netUsdc ?? 0 }))
+    // A money board lists money that moved, nothing else.
+    .filter(({ net }) => net !== 0)
+    .map(({ r, net }) => ({
+      key: r.address, title: shortAddr(r.address), sub: `${r.wins}W · ${r.losses}L`,
+      value: `${net >= 0 ? '+' : '−'}${fmtUsdc(Math.abs(net))}`, positive: net >= 0,
+      mine: r.address.toLowerCase() === meLc,
+    }));
+}
+
+const EMPTY: Record<Board, string> = {
+  trophies: 'No ranked matches yet — the ladder fills as people play Ranked.',
+  usdc: 'No USDC pots settled yet.',
+  clans: 'No clans yet — found the first one on the Clan tab.',
+};
+
 function Leaderboard({ me }: { me: string }) {
-  const [rows, setRows] = useState<LeaderRow[]>([]);
+  const [board, setBoard] = useState<Board>('trophies');
+  const [rows, setRows] = useState<BoardRow[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void loadLeaderboard().then((r) => {
-      if (cancelled) return;
-      /* Drop the harness accounts.
-       *
-       * A load-test wallet sat in the public top ten at 0W · 162L · +0,
-       * which is not a player and reads to anyone looking as a bot farming the
-       * ladder. A row earns its place by having won something or moved some
-       * money; nothing legitimate is excluded by that, because a real player with
-       * zero wins and zero net is also ranked nowhere. */
-      setRows(r.filter((row) => row.wins > 0 || (row.netUsdc ?? 0) !== 0));
-    });
+    setRows(null);
+    void loadBoard(board, me).then((r) => { if (!cancelled) setRows(r); }).catch(() => { if (!cancelled) setRows([]); });
     return () => { cancelled = true; };
-  }, []);
-
-  if (rows.length === 0) return null;
+  }, [board, me]);
 
   return (
-    <section aria-label="Leaderboard">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <span className="label">Leaderboard</span>
-        <span className="label" style={{ fontSize: 12 }}>by net winnings</span>
+    <section aria-label="Leaderboards">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span className="label">Leaderboards</span>
+        <span className="label" style={{ fontSize: 12 }}>money columns are chain-verified</span>
       </div>
-      <div className="well" style={{ padding: '2px 10px' }}>
-        {rows.slice(0, 10).map((r, i) => {
-          const isMe = r.address === me;
-          return (
-            <div
-              key={r.address}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9, padding: '9px 0',
-                borderTop: i === 0 ? 'none' : '2px solid rgba(0,0,0,.28)',
-              }}
-            >
-              <RankChip rank={i + 1} />
+      <div role="tablist" aria-label="Leaderboard" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 8 }}>
+        {BOARDS.map((b) => (
+          <button
+            key={b.id}
+            role="tab"
+            type="button"
+            aria-selected={board === b.id}
+            onClick={() => setBoard(b.id)}
+            className="btn-3d"
+            style={{
+              minHeight: 38, borderRadius: 9, border: '2px solid var(--ink)', fontFamily: 'var(--font-display)', fontSize: 13,
+              background: board === b.id ? 'linear-gradient(180deg, var(--btn-gold-hi), var(--btn-gold))' : 'var(--recess)',
+              color: board === b.id ? '#0d1120' : 'var(--dim)', cursor: 'pointer',
+            }}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="well" style={{ padding: '2px 10px', minHeight: 54 }}>
+        {rows === null ? (
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>{EMPTY[board]}</p>
+        ) : rows.slice(0, 10).map((r, i) => (
+          <div
+            key={r.key}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 9, padding: '9px 0',
+              borderTop: i === 0 ? 'none' : '2px solid rgba(0,0,0,.28)',
+              background: r.mine ? 'rgba(243,198,75,.08)' : undefined,
+            }}
+          >
+            <RankChip rank={i + 1} />
+            <span style={{ minWidth: 0, flex: 1, display: 'grid' }}>
               <span
-                className="mono"
                 style={{
-                  fontSize: 12, minWidth: 0, flex: 1,
-                  color: isMe ? 'var(--gold-hi)' : 'var(--dim)',
+                  fontFamily: 'var(--font-mono)', fontSize: 12, color: r.mine ? 'var(--gold-hi)' : 'var(--text)', fontWeight: r.mine ? 800 : 600,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  fontWeight: isMe ? 800 : 400,
                 }}
               >
-                {shortAddr(r.address)}
-                {isMe && <span className="label" style={{ fontSize: 12, marginLeft: 5 }}>you</span>}
+                {r.title}{r.mine && <span className="label" style={{ fontSize: 11, marginLeft: 5 }}>you</span>}
               </span>
-              <span className="fine" style={{ fontSize: 12, flexShrink: 0 }}>
-                {r.wins}W · {r.losses}L
-              </span>
-              <span
-                className="money"
-                style={{ fontSize: 13, flexShrink: 0, color: (r.netUsdc ?? 0) >= 0 ? 'var(--gold)' : 'var(--red)' }}
-              >
-                {`${(r.netUsdc ?? 0) >= 0 ? '+' : '−'}${fmtUsdc(Math.abs(r.netUsdc ?? 0))}`}
-              </span>
-            </div>
-          );
-        })}
+              <span className="fine" style={{ fontSize: 11, color: 'var(--dim)' }}>{r.sub}</span>
+            </span>
+            <span className="money" style={{ fontSize: 13, flexShrink: 0, color: r.positive ? 'var(--gold)' : 'var(--red)' }}>{r.value}</span>
+          </div>
+        ))}
       </div>
     </section>
   );
