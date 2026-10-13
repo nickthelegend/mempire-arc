@@ -221,13 +221,13 @@ function Home() {
   const canManage = role === 'leader' || role === 'coleader';
 
   const openRequests = mine.feed.filter((f) => f.kind === 'request' && !f.filledBy);
-  const myOpen = openRequests.find((f) => f.address === address);
+  const myOpen = openRequests.find((f) => f.address.toLowerCase() === address?.toLowerCase());
 
   const doLend = async (id: string) => {
     const err = await lend(address, id);
     setLocalError(err);
     // The lend reward used to be 5 Crowns mirrored locally. Crowns are gone,
-    // and $MEMPIRE cannot be minted client-side — it is a real SPL balance, so
+    // and $MEMPIRE cannot be minted client-side — it is a real ERC-20 balance, so
     // the only honest way to pay this is a transfer from the treasury. Until
     // the relay does that, lending is thanks and standing, not a payout.
   };
@@ -333,7 +333,7 @@ function Home() {
                 member={m}
                 rank={i + 1}
                 isMe={m.address === address}
-                onTap={canManage && m.address !== address ? () => { /* management sheet */ } : undefined}
+                onTap={canManage && m.address.toLowerCase() !== address?.toLowerCase() ? () => { /* management sheet */ } : undefined}
               />
             </div>
           ))}

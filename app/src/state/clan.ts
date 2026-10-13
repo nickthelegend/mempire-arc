@@ -357,5 +357,5 @@ export const useClan = create<ClanState>((set, get) => ({
 
   clear: () => set({ mine: null, results: [], preview: null, error: null }),
 
-  myRole: (address) => get().mine?.members.find((m) => m.address === address)?.role ?? null,
+  myRole: (address) => get().mine?.members.find((m) => m.address.toLowerCase() === address?.toLowerCase())?.role ?? null,
 }));
