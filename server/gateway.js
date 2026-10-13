@@ -1,3 +1,7 @@
+import {encodeFunctionData,isHex,keccak256} from 'viem';
+import {GatewayJournal} from './gateway-journal.js';
+import {authenticateGatewayRequests} from './gateway-intent.js';
+import {GATEWAY_MINT_ABI,verifyOriginalGatewayMint} from './gateway-receipt.js';
 /**
  * Circle Gateway: one USDC balance across chains, spendable on Arc instantly.
  *
@@ -16,8 +20,8 @@
  * spent. The browser talks to Circle through this route only because the API
  * is not CORS-enabled for arbitrary origins.
  */
-import { ARC_TESTNET, CHAIN_ID, IS_MAINNET, normAddress, publicClient } from './chain.js';
-import { relayerAddress, sendRelayerTx } from './relayer.js';
+import { ARC_TESTNET, CHAIN_ID, IS_MAINNET, USDC, normAddress, publicClient } from './chain.js';
+import { relayerAddress, sendGatewayRelayerTx } from './relayer.js';
 
 // A local fork of Arc mainnet uses mainnet's Gateway; Arc testnet uses testnet's.
 const TESTNET = CHAIN_ID === ARC_TESTNET;
@@ -27,11 +31,6 @@ export const GATEWAY = TESTNET
 
 /** Source chains the app offers, by CCTP/Gateway domain. */
 export const GATEWAY_DOMAINS = { 0: 'Ethereum', 3: 'Arbitrum', 6: 'Base', 26: 'Arc' };
-
-const MINTER_ABI = [{
-  type: 'function', name: 'gatewayMint', stateMutability: 'nonpayable',
-  inputs: [{ name: 'attestationPayload', type: 'bytes' }, { name: 'signature', type: 'bytes' }], outputs: [],
-}];
 
 /** Most a single relayed top-up may move, in USDC (bounded on mainnet: real money, relayer gas). */
 const MAX_TOPUP = Number(process.env.GATEWAY_MAX_TOPUP ?? 100);
@@ -66,7 +65,8 @@ function checkIntents(requests) {
   return null;
 }
 
-export function registerGatewayRoutes(app, gate) {
+export function registerGatewayRoutes(app, gate, getDurableDb=()=>null) {
+  const journal=new GatewayJournal(getDurableDb);
   const pass = (_req, _res, next) => next();
 
   app.get('/api/gateway/config', (_req, res) => {
@@ -96,28 +96,42 @@ export function registerGatewayRoutes(app, gate) {
    * Body: { requests: [{ burnIntent, signature }] } exactly as Circle's /transfer takes it.
    */
   app.post('/api/gateway/mint', gate ?? pass, async (req, res) => {
-    const bad = checkIntents(req.body?.requests);
-    if (bad) return res.status(400).json({ error: bad });
-    if (!relayerAddress()) return res.status(503).json({ error: 'no relayer key: the app can call gatewayMint itself' });
-    let attestation;
+    let batch;
     try {
-      const r = await circle('/transfer', req.body.requests);
-      if (!r.ok) return res.status(r.status === 400 ? 400 : 502).json({ error: r.json?.message ?? `gateway answered ${r.status}`, gateway: r.json });
-      attestation = r.json;
-    } catch (e) {
-      return res.status(502).json({ error: `could not reach Circle Gateway: ${short(e)}` });
-    }
-    const call = { address: GATEWAY.minter, abi: MINTER_ABI, functionName: 'gatewayMint', args: [attestation.attestation, attestation.signature] };
-    try {
-      await publicClient().simulateContract({ ...call, account: relayerAddress() });
-    } catch (e) {
-      return res.status(409).json({ error: `the attestation would not mint: ${short(e)}`, attestation });
-    }
-    try {
-      const { hash } = await sendRelayerTx(call);
-      res.json({ ok: true, hash, transferId: attestation.transferId ?? null });
-    } catch (e) {
-      res.status(502).json({ error: `mint failed: ${short(e)}`, hash: e?.hash ?? null });
+      if(CHAIN_ID!==5042002)return res.status(503).json({error:'Durable relayed Gateway mint requires Arc testnet 5042002.'});
+      batch=await authenticateGatewayRequests(req.body?.requests,GATEWAY,MAX_TOPUP);
+      // Refuse memory fallback before any provider/signing handoff.
+      journal.collection();
+      const recoverOriginal=async old=>{
+        if(old.owner!==batch.owner)throw Object.assign(new Error('Original Gateway owner differs.'),{status:403});
+        if(old.identity){
+          try {const proof=await verifyOriginalGatewayMint(publicClient(),old);if(old.state==='mint-submitted')await journal.advance(batch.id,batch.owner,'mint-submitted','confirmed',{finalizedBlock:proof.blockNumber,finalizedBlockHash:proof.blockHash});return res.json({ok:true,hash:proof.hash,transferId:old.transferId,recovered:true});}
+          catch{return res.status(409).json({error:'Original mint outcome remains unresolved. No provider or signer request was repeated.',hash:old.identity.hash,transferId:old.transferId});}
+        }
+        return res.status(409).json({error:'Original Gateway transfer is durably recorded but unresolved. Genuine Circle/relayer history is required; do not authorize another transfer.',transferId:old.transferId});
+      };
+      const prior=await journal.get(batch.id);if(prior)return await recoverOriginal(prior);
+      const relayer=relayerAddress();if(!relayer)return res.status(503).json({error:'Gateway relayer signing is unavailable.'});
+      const actual=publicClient();if(await actual.getChainId()!==5042002)throw new Error('Gateway RPC network differs.');
+      const minterCode=await actual.getCode({address:GATEWAY.minter});if(!minterCode||minterCode==='0x')throw new Error('Gateway minter deployment is unavailable.');
+      const claimed=await journal.claim({id:batch.id,owner:batch.owner,chainId:CHAIN_ID,minter:GATEWAY.minter,token:USDC,relayer,intents:batch.intents,intentHashes:batch.intentHashes,signatureHashes:batch.signatureHashes});
+      if(!claimed.created)return await recoverOriginal(claimed.entry);
+      // A permanent atomic original-intent claim exists before Circle can receive the authorization.
+      const r=await circle('/transfer',batch.requests);
+      if(!r.ok)return res.status(502).json({error:'Original Circle transfer outcome remains locked; no automatic retry is allowed.'});
+      const a=r.json;if(!isHex(a.attestation)||!isHex(a.signature))throw Error('Original Circle response has no usable attestation. History is required.');
+      if(a.transferId!==undefined&&(typeof a.transferId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(a.transferId)))throw Error('Original Circle transfer ID is invalid.');
+      await journal.advance(batch.id,batch.owner,'circle-unknown','attested',{transferId:a.transferId,attestationHash:keccak256(a.attestation),attestationSignatureHash:keccak256(a.signature)});
+      const call={address:GATEWAY.minter,abi:GATEWAY_MINT_ABI,functionName:'gatewayMint',args:[a.attestation,a.signature]};
+      await publicClient().simulateContract({...call,account:relayer});
+      await journal.advance(batch.id,batch.owner,'attested','mint-unknown',{mintDataHash:keccak256(encodeFunctionData(call))});
+      await sendGatewayRelayerTx(call,{minimumNonce:from=>journal.nonceFloor(from),persistSigned:identity=>journal.recordSigned(batch.id,batch.owner,identity)});
+      const saved=await journal.get(batch.id);const proof=await verifyOriginalGatewayMint(publicClient(),saved);
+      await journal.advance(batch.id,batch.owner,'mint-submitted','confirmed',{finalizedBlock:proof.blockNumber,finalizedBlockHash:proof.blockHash});
+      return res.json({ok:true,hash:proof.hash,transferId:saved.transferId});
+    } catch(e) {
+      let saved;try{if(batch)saved=await journal.get(batch.id);}catch{}
+      return res.status(e.status??(batch?503:400)).json({error:batch?'Original Gateway outcome requires recovery. No new transfer or mint was retried.':short(e),hash:saved?.identity?.hash,transferId:saved?.transferId});
     }
   });
 }

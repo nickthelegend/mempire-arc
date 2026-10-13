@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
+import {recoverOriginalTransaction} from "../chain/account";
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { WalletPicker } from './WalletPicker';
 import { MarketBoard } from './MarketBoard';
@@ -24,6 +25,7 @@ const TABS = [
  */
 export function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const [recoveryMessage,setRecoveryMessage]=useState<string|null>(null);
   const inBattle = pathname === '/battle';
   const autoConnect = useWallet((s) => s.autoConnect);
   const matchStatus = useMatch((s) => s.status);
@@ -164,6 +166,8 @@ export function Shell({ children }: { children: ReactNode }) {
             ))}
           </nav>
         )}
+        {!inBattle?<button type="button" onClick={async()=>{try{const r=await recoverOriginalTransaction();setRecoveryMessage(`Original call finalized: ${r.transactionHash}. No new transaction was sent.`);}catch(e){setRecoveryMessage(e instanceof Error?e.message:'Original transaction could not be verified.');}}}>Check original transaction</button>:null}
+        {recoveryMessage?<p role="status">{recoveryMessage}</p>:null}
         <WalletPicker />
       </div>
       {showGutters && <div className="gutter"><MarketBoard side="right" /></div>}

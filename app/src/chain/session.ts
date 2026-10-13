@@ -1,6 +1,6 @@
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
 import { type Address, type Hex } from 'viem';
-import { localSigner, type Signer } from './account';
+import { localSigner, sendValue, type Signer } from './account';
 
 /*
  * Per-match session keys.
@@ -100,7 +100,7 @@ export const hasSession = (matchId: number): boolean => sessionFor(matchId) !== 
 
 /**
  * Return a finished match's unspent gas float to the player, then forget the key.
- * Best effort: a sweep that fails leaves dust on a key nobody will use again.
+ * An unknown or failed sweep retains its session key; only verified return permits forgetting it.
  */
 export async function sweepSession(matchId: number, to: Address): Promise<void> {
   const s = sessionFor(matchId);
@@ -116,12 +116,9 @@ export async function sweepSession(matchId: number, to: Address): Promise<void> 
     // Sized so the whole float but the fee goes home; maxFee bounds what the fee can be.
     const fee = fees.maxFeePerGas * gas;
     if (balance > fee * 2n) {
-      await s.wallet.sendTransaction({
-        account: s.account, chain: s.wallet.chain, to, value: balance - fee, gas,
-        maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-      });
+      await sendValue(to,balance-fee,s); // Durable original call and finalized receipt before forgetting the key.
     }
-  } catch { /* dust */ }
+  } catch { return; /* Keep the existing session key and unresolved journal for genuine recovery. */ }
   forgetSession(matchId);
 }
 

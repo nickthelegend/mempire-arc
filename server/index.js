@@ -152,7 +152,7 @@ const NET_FIELD = { USDC: 'netUsdc' };
  */
 registerMarketRoutes(app);
 registerNftRoutes(app, readGate);
-registerGatewayRoutes(app, readGate);
+registerGatewayRoutes(app, readGate, () => client ? db : null);
 registerAgentRoutes(app, readGate);
 registerAiRoutes(app);
 

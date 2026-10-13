@@ -32,7 +32,7 @@
  * (no error, no receipt), so fees are floored there rather than trusted to
  * the node's suggestion.
  */
-import { createWalletClient, http } from 'viem';
+import { createWalletClient, http, encodeFunctionData,keccak256,parseTransaction,recoverTransactionAddress } from 'viem';
 import { nonceManager, privateKeyToAccount } from 'viem/accounts';
 import { CHAIN_ID } from './chain.js';
 import { RPC_URL, abis, chain, deployment, feeParams, publicClient, sameAddress } from './chain.js';
@@ -162,4 +162,35 @@ export async function sendRelayerTx(call) {
     throw e;
   }
   return { hash, receipt };
+}
+
+/** Gateway-only original raw transaction: durable identity before broadcast, no nonce retry. */
+export async function sendGatewayRelayerTx(call,{persistSigned,minimumNonce}) {
+ if(!wallet||!account)throw new Error(refusal??'relayer not configured');
+ if(CHAIN_ID!==5042002||typeof persistSigned!=='function'||typeof minimumNonce!=='function')throw new Error('Durable Arc-testnet Gateway recording is required.');
+ const client=publicClient();
+ const submit=async()=>{
+  if(await client.getChainId()!==5042002)throw new Error('Gateway RPC network differs. Nothing was signed.');
+  const data=encodeFunctionData({abi:call.abi,functionName:call.functionName,args:call.args});
+  const estimate=await client.estimateContractGas({account,...call});const gas=(estimate*GAS_MARGIN_NUM)/GAS_MARGIN_DEN;const estimatedFees=await client.estimateFeesPerGas({type:'eip1559'});
+  if(estimatedFees.maxFeePerGas===undefined||estimatedFees.maxPriorityFeePerGas===undefined)throw new Error('Live Gateway fee estimate is unavailable.');
+  const fees={maxFeePerGas:estimatedFees.maxFeePerGas>40000000000n?estimatedFees.maxFeePerGas:40000000000n,maxPriorityFeePerGas:estimatedFees.maxPriorityFeePerGas};
+  if(fees.maxPriorityFeePerGas>fees.maxFeePerGas)throw new Error('Gateway fee estimate is inconsistent.');
+  const pending=await client.getTransactionCount({address:account.address,blockTag:'pending'});const floor=await minimumNonce(account.address);
+  const managed=await nonceManager.get({address:account.address,chainId:CHAIN_ID,client});
+  if(!Number.isSafeInteger(floor)||floor<0||floor>pending||managed!==pending)throw new Error('An earlier original relayer nonce is not observed. Reconcile it before signing another Gateway mint.');
+  const raw=await account.signTransaction({type:'eip1559',chainId:CHAIN_ID,to:call.address,data,value:0n,nonce:pending,gas,...fees});
+  const tx=parseTransaction(raw);const from=await recoverTransactionAddress({serializedTransaction:raw});
+  if(tx.type!=='eip1559'||tx.chainId!==CHAIN_ID||tx.to?.toLowerCase()!==call.address.toLowerCase()||tx.data?.toLowerCase()!==data.toLowerCase()||(tx.value??0n)!==0n||tx.nonce!==pending||tx.gas!==gas||tx.maxFeePerGas!==fees.maxFeePerGas||tx.maxPriorityFeePerGas!==fees.maxPriorityFeePerGas||from.toLowerCase()!==account.address.toLowerCase())throw new Error('Signed Gateway call differs. Nothing was broadcast.');
+  const hash=keccak256(raw);
+  await persistSigned({hash,chainId:CHAIN_ID,from,to:call.address,dataHash:keccak256(data),nonce:pending,gas:gas.toString(),maxFeePerGas:fees.maxFeePerGas.toString(),maxPriorityFeePerGas:fees.maxPriorityFeePerGas.toString()});
+  // Advance the shared manager only after the original durable identity exists.
+  const consumed=await nonceManager.consume({address:account.address,chainId:CHAIN_ID,client});if(consumed!==pending)throw Object.assign(new Error('Original nonce changed after persistence. No broadcast; reconcile the original hash.'),{hash});
+  try{const returned=await wallet.sendRawTransaction({serializedTransaction:raw});if(returned.toLowerCase()!==hash.toLowerCase())throw new Error('Provider returned another Gateway hash.');return hash;}
+  catch(e){e.hash=hash;throw e;}
+ };
+ const run=tail.then(submit,submit);tail=run.catch(()=>{});const hash=await run;
+ const receipt=await client.waitForTransactionReceipt({hash,timeout:45000}).catch(e=>{e.hash=hash;throw e;});
+ if(receipt.transactionHash.toLowerCase()!==hash.toLowerCase())throw Object.assign(new Error('Original Gateway receipt hash differs.'),{hash});
+ return {hash,receipt};
 }

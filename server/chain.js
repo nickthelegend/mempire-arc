@@ -11,6 +11,7 @@
  * repo's `shared/` by `npm run sync-shared`. The relay is deployed from this
  * directory alone, so it cannot reach `../shared` at runtime.
  */
+import { chainIdFromEnv } from './chain-id.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { createPublicClient, defineChain, erc20Abi, http, keccak256 } from 'viem';
 
@@ -18,7 +19,7 @@ import { createPublicClient, defineChain, erc20Abi, http, keccak256 } from 'viem
 export const ARC_MAINNET = 5042;
 export const ARC_TESTNET = 5042002;
 
-export const CHAIN_ID = Number(process.env.CHAIN_ID ?? ARC_TESTNET);
+export const CHAIN_ID = chainIdFromEnv(process.env.CHAIN_ID, ARC_TESTNET);
 const DEFAULT_RPC = {
   [ARC_MAINNET]: 'https://rpc.mainnet.arc.io',
   [ARC_TESTNET]: 'https://rpc.testnet.arc.io',

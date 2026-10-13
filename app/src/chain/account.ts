@@ -1,5 +1,6 @@
+import {submitCall,recoverCall} from "./durable-call";
 import {
-  BaseError, ContractFunctionRevertedError, createWalletClient, custom, encodeFunctionData, http,
+  keccak256,BaseError, ContractFunctionRevertedError, createWalletClient, custom, encodeFunctionData, http,
   type Abi, type Account, type Address, type EIP1193Provider, type Hash, type Hex,
   type TransactionReceipt, type WalletClient,
 } from 'viem';
@@ -146,19 +147,10 @@ export async function send(call: Call, s: Signer | null = current): Promise<TxRe
   });
   const gas = ((await client.estimateGas({ account: from, to: call.address, data, value: call.value })) * GAS_MARGIN_NUM)
     / GAS_MARGIN_DEN;
-  const hash = await s.wallet.sendTransaction({
-    account: s.account,
-    chain: CHAIN,
-    to: call.address,
-    data,
-    value: call.value,
-    gas,
-    ...(await arcFees()),
-  });
-  if (s === current) afterSign?.();
-  const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 300, timeout: 60_000 });
-  if (receipt.status !== 'success') throw new Error(`transaction reverted: ${hash}`);
-  return { hash, receipt };
+  const fees=await arcFees();
+  const receipt=await durableWalletSend(s,call.address,data,call.value??0n,gas,fees);
+  if(s===current)afterSign?.();
+  return {hash:receipt.transactionHash,receipt};
 }
 
 /** Arc drops anything under a 20 gwei maxFeePerGas without a receipt; never go below 2× that. */
@@ -178,10 +170,17 @@ export async function arcFees(): Promise<{ maxFeePerGas: bigint; maxPriorityFeeP
 export async function sendValue(to: Address, value: bigint, s: Signer | null = current): Promise<TxResult> {
   if (!s) throw new NoSignerError();
   const gas = await publicClient().estimateGas({ account: s.address, to, value });
-  const hash = await s.wallet.sendTransaction({ account: s.account, chain: CHAIN, to, value, gas, ...(await arcFees()) });
-  const receipt = await publicClient().waitForTransactionReceipt({ hash, pollingInterval: 300 });
-  return { hash, receipt };
+  const receipt=await durableWalletSend(s,to,'0x',value,gas,await arcFees());
+  return {hash:receipt.transactionHash,receipt};
 }
+
+async function durableWalletSend(s:Signer,to:Address,data:Hex,value:bigint,gas:bigint,fees:{maxFeePerGas?:bigint;maxPriorityFeePerGas?:bigint}){
+ const wasCurrent=s===current;
+ const context=async()=>{const [addresses,id]=await Promise.all([s.wallet.getAddresses(),s.wallet.getChainId()]);if(id!==CHAIN_ID||!addresses.some(a=>a.toLowerCase()===s.address.toLowerCase())||(wasCurrent&&current!==s))throw Error('Original wallet or network changed. No transaction was requested.');};
+ return submitCall(publicClient(),localStorage,{chainId:CHAIN_ID,from:s.address,to,dataHash:keccak256(data),value:value.toString(),gas:gas.toString(),maxFeePerGas:fees.maxFeePerGas?.toString(),maxPriorityFeePerGas:fees.maxPriorityFeePerGas?.toString()},context,nonce=>s.wallet.sendTransaction({account:s.account,chain:CHAIN,to,data,value,gas,nonce,...fees}));
+}
+/** Read-only recovery of the original owner call, never a retry or signature. */
+export async function recoverOriginalTransaction(s:Signer|null=current){if(!s)throw new NoSignerError();return recoverCall(publicClient(),localStorage,CHAIN_ID,s.address);}
 
 /** Contract error names, said the way a player needs to hear them. */
 const REASONS: Record<string, string> = {

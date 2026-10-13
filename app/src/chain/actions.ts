@@ -76,8 +76,9 @@ const dep = () => {
   return DEPLOYMENT;
 };
 
-function eventArgs<T>(receipt: TxResult['receipt'], abi: Abi, name: string): T | null {
+function eventArgs<T>(receipt: TxResult['receipt'], abi: Abi, name: string, emitter:Address): T | null {
   for (const log of receipt.logs) {
+    if(log.removed||log.address.toLowerCase()!==emitter.toLowerCase()||log.transactionHash!==receipt.transactionHash||log.blockHash!==receipt.blockHash)continue;
     try {
       const ev = decodeEventLog({ abi, data: log.data, topics: log.topics });
       if (ev.eventName === name) return ev.args as T;
@@ -123,9 +124,10 @@ export async function mintCardTx(coinId: number, payWith: 'usdc' | 'mempire' = '
     const permit = await permitFor(s, d.cards, mintFee);
     r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'mint', args: [coinId, permit] });
   }
-  const ev = eventArgs<{ cardId: bigint }>(r.receipt, CARDS_ABI, 'CardMinted');
+  const ev = eventArgs<{ cardId: bigint }>(r.receipt, CARDS_ABI, 'CardMinted', d.cards);
+  if(!ev)throw new Error(`Original mint receipt ${r.hash} has no verified CardMinted event. No card ID was inferred.`);
   track('card.mint', { coinId, payWith });
-  return { ...r, cardId: Number(ev?.cardId ?? 0) };
+  return { ...r, cardId: Number(ev.cardId) };
 }
 
 /** Merge `dupeId` into `keepId` for one level. Priced 100 × current level in $MEMPIRE. */
@@ -156,8 +158,9 @@ export async function buyChestTx(): Promise<TxResult & { chestId: number }> {
   const d = dep();
   await ensureAllowance(d.token, d.cards, 100n * 10n ** 18n);
   const r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'buyChest' });
-  const ev = eventArgs<{ chestId: bigint }>(r.receipt, CARDS_ABI, 'ChestGranted');
-  return { ...r, chestId: Number(ev?.chestId ?? 0) };
+  const ev = eventArgs<{ chestId: bigint }>(r.receipt, CARDS_ABI, 'ChestGranted', d.cards);
+  if(!ev)throw new Error(`Original purchase receipt ${r.hash} has no verified ChestGranted event. No chest ID was inferred.`);
+  return { ...r, chestId: Number(ev.chestId) };
 }
 
 export interface OpenedChest {
@@ -184,8 +187,9 @@ export async function openChestTx(chestId: number, favoredCoinIds: number[]): Pr
   if (Number(chest[2]) !== 3) {
     const r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'open', args: [BigInt(chestId)] });
     hashes.push(r.hash);
-    const ev = eventArgs<{ revealBlock: bigint }>(r.receipt, CARDS_ABI, 'ChestOpening');
-    revealBlock = ev?.revealBlock ?? r.receipt.blockNumber + 1n;
+    const ev = eventArgs<{ revealBlock: bigint }>(r.receipt, CARDS_ABI, 'ChestOpening', d.cards);
+    if(!ev)throw new Error(`Original opening receipt ${r.hash} has no verified ChestOpening event. No reveal block was inferred.`);
+    revealBlock = ev.revealBlock;
   }
   for (let i = 0; i < 40; i += 1) {
     if (await client.getBlockNumber() > revealBlock) break;
@@ -194,10 +198,10 @@ export async function openChestTx(chestId: number, favoredCoinIds: number[]): Pr
   const favored = favoredCoinIds.slice(0, 8);
   const r = await send({ address: d.cards, abi: CARDS_ABI, functionName: 'reveal', args: [BigInt(chestId), favored] });
   hashes.push(r.hash);
-  const ev = eventArgs<{ seed: Hex; cardIds: bigint[] }>(r.receipt, CARDS_ABI, 'ChestOpened');
+  const ev = eventArgs<{ seed: Hex; cardIds: bigint[] }>(r.receipt, CARDS_ABI, 'ChestOpened', d.cards);
   if (!ev) {
-    // The reveal block aged out and the chest re-committed; one more pass reveals it.
-    return openChestTx(chestId, favoredCoinIds);
+    const recommitted=eventArgs<{chestId:bigint;revealBlock:bigint}>(r.receipt,CARDS_ABI,'ChestOpening',d.cards);
+    throw new Error(recommitted?.chestId===BigInt(chestId)?`Original reveal ${r.hash} re-committed the chest. Check its state before a new reveal; no automatic transaction was sent.`:`Original reveal ${r.hash} has no verified ChestOpened event. No cards were inferred or transaction retried.`);
   }
   track('chest.open', { chestId, cards: ev.cardIds.length });
   return { seed: ev.seed, cardIds: ev.cardIds.map(Number), hashes };
@@ -276,7 +280,7 @@ export async function createMatchTx(
   };
   const predicted = await publicClient().readContract({ address: d.arena, abi: ARENA_ABI, functionName: 'nextMatchId' }) as bigint;
   const r = await sendTagged(call, predicted, `stake:open:tier${tier}`, s);
-  const ev = eventArgs<{ matchId: bigint }>(r.receipt, ARENA_ABI, 'MatchCreated');
+  const ev = eventArgs<{ matchId: bigint }>(r.receipt, ARENA_ABI, 'MatchCreated', d.arena);
   if (!ev) throw new Error('match created but no MatchCreated event was found');
   track('match.staked', { seat: 0, tier, currency });
   return { matchId: Number(ev.matchId), hash: r.hash };

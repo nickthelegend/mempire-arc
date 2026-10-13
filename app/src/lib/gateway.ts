@@ -1,6 +1,10 @@
-import { maxUint256, pad, toHex, type Address, type Hex } from 'viem';
+import {withBridgeWorkflow} from './bridge-workflow-lock';
+import { maxUint256, pad, toHex,keccak256, type Address, type Hex } from 'viem';
 import { apiFetch } from './api';
 import type { Signer } from '../chain/account';
+import {readGateway,saveGateway,clearGateway,publicIntent,recoverGateway,type GatewayPending} from './gateway-recovery';
+import {activeSigner} from '../chain/account';
+import {CHAIN_ID,USDC,publicClient} from '../chain/provider';
 import { IS_MAINNET } from '../chain/provider';
 
 /*
@@ -79,8 +83,10 @@ export async function gatewayBalances(address: string): Promise<{ total: string;
  * Sign burn intents moving `amounts` (USDC base units, per source domain) from
  * the unified balance to the player's own address on Arc.
  */
-export async function signTopUp(s: Signer, amounts: { domain: number; units: bigint }[], maxFee = 20_000n) {
-  return Promise.all(amounts.map(async ({ domain, units }) => {
+async function signTopUp(s: Signer, amounts: { domain: number; units: bigint }[], maxFee = 20_000n) {
+  if(readGateway(localStorage,CHAIN_ID,s.address))throw Error('An original Gateway transfer is unresolved. Check its receipt before signing again.');
+  if(amounts.length<1||amounts.length>4||amounts.some(a=>!USDC_BY_DOMAIN[a.domain]||a.units<=0n))throw Error('Unsupported Gateway source or amount.');
+  const intents=amounts.map(({domain,units})=>{
     const burnIntent = {
       maxBlockHeight: maxUint256,
       maxFee,
@@ -101,19 +107,32 @@ export async function signTopUp(s: Signer, amounts: { domain: number; units: big
         hookData: '0x' as Hex,
       },
     };
-    const signature = await s.wallet.signTypedData({
-      account: s.account, domain: { name: 'GatewayWallet', version: '1' }, types: BURN_INTENT_TYPES, primaryType: 'BurnIntent', message: burnIntent,
-    });
-    return { burnIntent, signature };
-  }));
+    return burnIntent;
+  });
+  let pending:GatewayPending={version:1,chainId:CHAIN_ID,owner:s.address,minter:GATEWAY_MINTER,token:USDC,intents:intents.map(publicIntent),stage:'unsigned'};
+  saveGateway(localStorage,pending);
+  const requests=[];
+  try{for(const burnIntent of intents){if(activeSigner()!==s||await s.wallet.getChainId()!==CHAIN_ID)throw Error('Original wallet/network changed before signing.');const signature=await s.wallet.signTypedData({account:s.account,domain:{name:'GatewayWallet',version:'1'},types:BURN_INTENT_TYPES,primaryType:'BurnIntent',message:burnIntent});requests.push({burnIntent,signature});}pending={...pending,signatureHashes:requests.map(r=>keccak256(r.signature))};saveGateway(localStorage,pending);return requests;}catch(error){clearGateway(localStorage,pending);throw error;}
+
 }
 
 /** Hand the signed intents to the relay: Circle attests, the relay mints on Arc. Returns the mint tx. */
-export async function topUpArc(requests: Awaited<ReturnType<typeof signTopUp>>): Promise<{ hash: Hex }> {
+async function topUpArc(s:Signer,requests: Awaited<ReturnType<typeof signTopUp>>): Promise<{ hash: Hex }> {
+  const owner=s.address;if(activeSigner()!==s)throw Error('Restore the original wallet before submitting.');
+  let pending=readGateway(localStorage,CHAIN_ID,owner);if(!pending||pending.stage!=='unsigned'||JSON.stringify(pending.intents)!==JSON.stringify(requests.map(r=>publicIntent(r.burnIntent)))||JSON.stringify(pending.signatureHashes)!==JSON.stringify(requests.map(r=>keccak256(r.signature))))throw Error('Original Gateway intent/signature identity differs or was already submitted.');
+  if(await s.wallet.getChainId()!==CHAIN_ID||activeSigner()!==s)throw Error('Original wallet network changed.');
+  pending={...pending,stage:'submitted'};saveGateway(localStorage,pending); // Before any HTTP provider/relay write.
   const body = JSON.stringify({ requests }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
   const res = await apiFetch('/api/gateway/mint', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
   if (!res) throw new Error('the relay is unreachable');
   const j = await res.json().catch(() => ({}));
+  if(j.hash||j.transferId){pending={...pending,hash:j.hash??pending.hash,transferId:j.transferId??pending.transferId};saveGateway(localStorage,pending);}
   if (!res.ok) throw new Error(j?.error ?? `the relay answered ${res.status}`);
-  return { hash: j.hash };
+  return recoverGateway(publicClient(),localStorage,CHAIN_ID,owner);
 }
+
+/** Sign and submit under one origin lock; signed requests never escape this workflow. */
+export async function submitTopUpArc(s:Signer,amounts:{domain:number;units:bigint}[],maxFee=20_000n){
+ return withBridgeWorkflow(CHAIN_ID,s.address,async()=>topUpArc(s,await signTopUp(s,amounts,maxFee)));
+}
+export async function recoverTopUpArc(){const owner=activeSigner()?.address;if(!owner)throw Error('Restore the original wallet.');return withBridgeWorkflow(CHAIN_ID,owner,()=>recoverGateway(publicClient(),localStorage,CHAIN_ID,owner));}

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { erc20Abi, formatUnits, parseUnits, type Abi } from 'viem';
 import { activeSigner, readableChainError, send } from '../chain/account';
 import { explorerUrl, NETWORK_LABEL, USDC } from '../chain/provider';
-import { enterFromRemote, REMOTE_CHAINS, remoteBalances, type RemoteChain } from '../lib/ccip';
-import { GATEWAY_WALLET, gatewayBalances, signTopUp, topUpArc, type GatewayBalance } from '../lib/gateway';
+import { recoverRemoteEntry, enterFromRemote, REMOTE_CHAINS, remoteBalances, type RemoteChain } from '../lib/ccip';
+import { recoverTopUpArc, GATEWAY_WALLET, gatewayBalances, submitTopUpArc, type GatewayBalance } from '../lib/gateway';
 import { fmtUsdc, shortAddr } from '../lib/format';
 import { useChain } from '../state/chain';
 import { useWallet } from '../state/wallet';
@@ -78,7 +78,7 @@ export function ArcStack() {
       need -= take;
     }
     if (!amounts.length) throw new Error('your unified balance is empty — deposit USDC on any chain first');
-    const { hash } = await topUpArc(await signTopUp(s, amounts));
+    const { hash } = await submitTopUpArc(s, amounts);
     return { text: 'Minted on Arc from your unified balance', href: explorerUrl(hash) };
   });
 
@@ -98,7 +98,7 @@ export function ArcStack() {
     const deck = cards.filter((c) => !c.inMatch && !seen.has(c.coinId) && seen.add(c.coinId)).slice(0, 8).map((c) => BigInt(c.id));
     if (deck.length < 8) throw new Error('you need eight free cards of different fighters');
     const { explorer } = await enterFromRemote(s, rc, { tier: 0, cardIds: deck, bridgeUnits: 1_000_000n });
-    return { text: `$1 match opened from ${rc.label} — follow it on CCIP Explorer`, href: explorer };
+    return { text: `Entry instruction sent from ${rc.label}; Arc match completion is not yet verified`, href: explorer };
   });
 
   const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } as const;
@@ -118,6 +118,7 @@ export function ArcStack() {
           {bal ? bal.balances.map((b) => `${b.chain} ${fmtUsdc(Number(b.balance))}`).join(' · ') : 'reading Circle Gateway…'}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Pill tone="blue" disabled={busy!==null} onClick={()=>void run('recover-gateway',async()=>{const r=await recoverTopUpArc();return {text:'Original Gateway mint verified finalized',href:explorerUrl(r.hash)};})}>Check original Gateway transfer</Pill>
           <Pill tone="gold" disabled={busy !== null || !bal || Number(bal.total) <= 0} onClick={() => void topUp()}>
             {busy === 'topup' ? 'Minting…' : 'Top up Arc · $1'}
           </Pill>
@@ -129,6 +130,7 @@ export function ArcStack() {
 
       <div className="well" style={{ padding: '8px 10px', display: 'grid', gap: 6 }}>
         <span className="display display--sm" style={{ fontSize: 14 }}>Enter from another chain · Chainlink CCIP + CCTP</span>
+        <Pill tone="blue" disabled={busy!==null} onClick={()=>void run('recover-remote',async()=>{const s=activeSigner();if(!s)throw Error('Restore the original player.');const r=await recoverRemoteEntry(s);return {text:r.message,href:`https://ccip.chain.link/tx/${r.hash}`};})}>Check original remote entry</Pill>
         <span className="fine" style={{ fontSize: 12 }}>
           One transaction on the source chain: CCTP moves your $1 to {NETWORK_LABEL}, CCIP carries the instruction, and the match opens here.
         </span>
