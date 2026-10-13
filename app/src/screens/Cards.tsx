@@ -21,6 +21,7 @@ import { FEES, useCollection } from '../state/collection';
 import { useWallet } from '../state/wallet';
 import { Token } from '../components/Token';
 import { useMempire } from '../state/mempire';
+import { MIRROR_NOTE, PRICES_MIRRORED } from '../chain/provider';
 
 /** "All" first, then the three asset classes from the shared catalogue. */
 const FILTERS: { id: AssetKind | 'all'; label: string }[] = [
@@ -483,8 +484,10 @@ export function Cards() {
           ))}
         </div>
         <p style={{ fontSize: 12, color: 'var(--dim)', marginTop: 8 }}>
-          Every fighter is priced by its Chainlink Data Feed on Arc, read in the mint
-          transaction itself — a stale or missing feed, no card. Today&apos;s ▲▼ is the
+          {PRICES_MIRRORED
+            ? 'Every fighter is priced by its feed on Arc testnet, read in the mint transaction itself — a stale or missing feed, no card. '
+            : 'Every fighter is priced by its Chainlink Data Feed on Arc, read in the mint transaction itself — a stale or missing feed, no card. '}
+          {PRICES_MIRRORED && <><b>{MIRROR_NOTE}</b>{' '}</>} Today&apos;s ▲▼ is the
           market meta: each feed&apos;s own 24-hour move, computed on chain from its round
           history, becomes a bounded (±15%) stat modifier.
         </p>

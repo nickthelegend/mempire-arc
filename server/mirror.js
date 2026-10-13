@@ -7,7 +7,7 @@
  * src/testnet). This job reads the real mainnet proxy (`source()`) and pushes
  * any rounds the mirror lacks — same round ids, answers and timestamps — so
  * the testnet contracts run exactly mainnet's code paths on mainnet's data.
- * On first run it backfills ~30 hours so the 24-hour meta has history.
+ * On first run it copies a sparse seed (latest + the day-ago round and its successor) so the first meta post works; it is contiguous after 24 h of uptime.
  *
  * Runs only when the deployment says `priceFeeds: "mirror"`, and the relayer
  * (the mirrors' immutable updater) signs the pushes. Never runs on mainnet.
@@ -27,7 +27,7 @@ const MIRROR_ABI = [
     inputs: [{ type: 'uint80[]' }, { type: 'int256[]' }, { type: 'uint64[]' }, { type: 'uint64[]' }], outputs: [],
   },
 ];
-const BACKFILL_S = 30 * 3600;
+const SPARSE_LOOKBACK_S = 24 * 3600;
 
 let mainnet = null;
 let last = { at: 0, pushed: 0, error: null };
@@ -39,17 +39,26 @@ async function syncOne(testnet, mirror) {
   mainnet ??= createPublicClient({ transport: http(MAINNET_RPC, { retryCount: 2, timeout: 15_000 }) });
   const source = await testnet.readContract({ address: mirror, abi: MIRROR_ABI, functionName: 'source' });
   const have = await testnet.readContract({ address: mirror, abi: MIRROR_ABI, functionName: 'latestRound' });
-  const [latest, , , latestAt] = await mainnet.readContract({ address: source, abi: AGGREGATOR_ABI, functionName: 'latestRoundData' });
+  const [latest] = await mainnet.readContract({ address: source, abi: AGGREGATOR_ABI, functionName: 'latestRoundData' });
   if (latest <= have) return 0;
-  // Collect missing rounds newest-first, stopping at what the mirror has or the backfill horizon.
+  // Collect missing rounds newest-first. A mirror that has never been written
+  // gets a SPARSE start (the latest round, the round current 24 h ago and the one
+  // after it): that is all MarketMeta.postFromFeeds reads, and it costs ~0.1 USDC
+  // instead of ~1 USDC for a full day of history. From then on every new
+  // mainnet round is copied, so the mirror is contiguous after 24 h of uptime.
   const rounds = [];
-  for (let r = latest; r > have && rounds.length < 200; r -= 1n) {
+  const dayAgo = Math.floor(Date.now() / 1000) - SPARSE_LOOKBACK_S;
+  for (let r = latest; r > have && rounds.length < 400; r -= 1n) {
     let data;
     try { data = await mainnet.readContract({ address: source, abi: AGGREGATOR_ABI, functionName: 'getRoundData', args: [r] }); } catch { break; }
     const [, answer, startedAt, updatedAt] = data;
     if (updatedAt === 0n) break;
     rounds.push({ r, answer, startedAt, updatedAt });
-    if (have === 0n && Number(latestAt) - Number(updatedAt) > BACKFILL_S) break;
+    if (have === 0n && Number(updatedAt) <= dayAgo) break; // r is now the day-ago round; rounds[-2] is the one after it
+  }
+  if (have === 0n && rounds.length > 3) {
+    // keep latest, and the last two collected (day-ago round and its successor)
+    rounds.splice(1, rounds.length - 3);
   }
   rounds.reverse();
   if (!rounds.length) return 0;

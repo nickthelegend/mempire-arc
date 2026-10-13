@@ -166,7 +166,7 @@ export function Shell({ children }: { children: ReactNode }) {
             ))}
           </nav>
         )}
-        {!inBattle?<button type="button" onClick={async()=>{try{const r=await recoverOriginalTransaction();setRecoveryMessage(`Original call finalized: ${r.transactionHash}. No new transaction was sent.`);}catch(e){setRecoveryMessage(e instanceof Error?e.message:'Original transaction could not be verified.');}}}>Check original transaction</button>:null}
+        {!inBattle?<button type="button" title="Re-checks a transaction this browser sent but never saw confirm. Sends nothing new." style={{background:'none',border:'none',color:'var(--dim)',fontSize:11,textDecoration:'underline',cursor:'pointer',padding:'4px 0'}} onClick={async()=>{try{const r=await recoverOriginalTransaction();setRecoveryMessage(`Original call finalized: ${r.transactionHash}. No new transaction was sent.`);}catch(e){setRecoveryMessage(e instanceof Error?e.message:'Original transaction could not be verified.');}}}>Check original transaction</button>:null}
         {recoveryMessage?<p role="status">{recoveryMessage}</p>:null}
         <WalletPicker />
       </div>

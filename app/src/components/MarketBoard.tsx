@@ -1,4 +1,5 @@
 import { useChain } from '../state/chain';
+import { PRICES_MIRRORED } from '../chain/provider';
 import { COINS, tickerOf } from '../lib/coins';
 
 /*
@@ -34,7 +35,7 @@ export function MarketBoard({ side }: { side: 'left' | 'right' }) {
       <div className="panel" style={{ position: 'sticky', top: 48, width: 260, maxWidth: '100%', padding: '14px 14px 12px' }}>
         <div className="label" style={{ textAlign: 'center' }}>{up ? '▲ Buffed by the market' : '▼ Nerfed by the market'}</div>
         <p className="fine" style={{ textAlign: 'center', color: 'var(--dim-on-wood)', margin: '4px 0 10px' }}>
-          {epoch ? `meta from ${metaAge(epoch)} · on chain · ±15% max` : 'no market meta posted yet'}
+          {epoch ? `meta from ${metaAge(epoch)} · on chain · ±15% max${PRICES_MIRRORED ? ' · testnet mirror feeds' : ''}` : 'no market meta posted yet'}
         </p>
         {rows.length === 0 && (
           <p className="fine" style={{ textAlign: 'center', color: 'var(--dim-on-wood)', margin: 0 }}>
@@ -44,15 +45,17 @@ export function MarketBoard({ side }: { side: 'left' | 'right' }) {
         <div style={{ display: 'grid', gap: 6 }}>
           {rows.map((c) => (
             <div key={c.coinId} className="well" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px' }}>
-              <img
-                src={c.cardArt}
-                alt=""
-                aria-hidden
-                width={28}
-                height={28}
-                onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
-                style={{ borderRadius: 6, objectFit: 'cover', border: '2px solid var(--ink)' }}
-              />
+              <span aria-hidden style={{ position: 'relative', width: 28, height: 28, flex: 'none', borderRadius: 6, border: '2px solid var(--ink)', background: `hsl(${c.hue ?? 210} 55% 38%)`, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 900, color: '#fff', overflow: 'hidden' }}>
+                {tickerOf(c).replace('$', '').slice(0, 1)}
+                <img
+                  src={c.cardArt}
+                  alt=""
+                  width={28}
+                  height={28}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  style={{ position: 'absolute', inset: 0, objectFit: 'cover' }}
+                />
+              </span>
               <span style={{ fontWeight: 800, fontSize: 13 }}>{tickerOf(c)}</span>
               {typeof c.change24h === 'number' && (
                 <span className="fine" style={{ color: 'var(--dim)' }}>
@@ -89,7 +92,7 @@ export function MarketStrip() {
     <div className="market-strip panel" aria-label="Today's market meta" style={{ alignItems: 'center', gap: 10, padding: '6px 10px', fontSize: 12, flexWrap: 'wrap' }}>
       <span className="label" style={{ fontSize: 11 }}>Market meta</span>
       {[...top(true), ...top(false)].map(chip)}
-      <span className="fine" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--dim-on-wood)' }}>{metaAge(epoch)} · on chain</span>
+      <span className="fine" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--dim-on-wood)' }}>{metaAge(epoch)} · on chain{PRICES_MIRRORED ? ' · testnet mirror feeds' : ''}</span>
     </div>
   );
 }

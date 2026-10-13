@@ -22,6 +22,7 @@ import { ARCHETYPE_NAMES } from '../sim/types';
 import { FP } from '../sim/fixed';
 import type { MintedCard } from '../state/collection';
 import { ArchetypeIcon, CoinBadge, LevelPips } from './ui';
+import { MIRROR_NOTE, PRICES_MIRRORED } from '../chain/provider';
 
 /** One labelled stat plate — the Supercell card-info grammar. */
 function Stat({ icon, label, value, delta }: {
@@ -214,8 +215,9 @@ export function CardDetail({
           {/* The panel is headed "Market" and these look like quotes, so it
               says where each number comes from right here. */}
           <p className="fine" style={{ margin: '6px 0 0', color: 'var(--dim-on-wood)' }}>
-            Price: Chainlink Data Feed on Arc ({coin.pair}). Meta: the feed&apos;s 24h move, computed on chain by
-            MarketMeta, ±15% max. Minted at: the Chainlink answer read in the card&apos;s own mint transaction.
+            Price: {PRICES_MIRRORED ? 'testnet mirror of the Chainlink Data Feed' : 'Chainlink Data Feed on Arc'} ({coin.pair}). Meta: the feed&apos;s 24h move, computed on chain by
+            MarketMeta, ±15% max. Minted at: the feed answer read in the card&apos;s own mint transaction.
+            {PRICES_MIRRORED ? ` ${MIRROR_NOTE}` : ''}
           </p>
         </div>
 

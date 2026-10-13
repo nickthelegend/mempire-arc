@@ -1,4 +1,4 @@
-import { IS_MAINNET, NETWORK_LABEL } from '../chain/provider';
+import { IS_MAINNET, NETWORK_LABEL, explorerUrl } from '../chain/provider';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoneyRow, Pill } from '../components/ui';
@@ -14,6 +14,49 @@ import { LiveOnArc } from '../components/LiveOnArc';
 import { ArcStack } from '../components/ArcStack';
 import { fetchStrandedMatches, type ChainMatch } from '../chain/read';
 import { useEscrow } from '../state/escrow';
+
+interface SettledRow { matchId: number; winner: string; pot: string; rake: string; byTimeout: boolean; tx: string; at: number | null }
+
+/** The arena's own settled matches, read from chain events by the relay: real pots, explorer links, no client reports. */
+function RecentMatches() {
+  const [rows, setRows] = useState<SettledRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void apiFetch('/api/arc/matches').then(async (r) => {
+      const j = r && r.ok ? await r.json().catch(() => null) : null;
+      if (live) setRows(j?.matches ?? []);
+    });
+    return () => { live = false; };
+  }, []);
+  return (
+    <section aria-label="Settled on Arc">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span className="label">Settled on {NETWORK_LABEL}</span>
+        <span className="label" style={{ fontSize: 12 }}>read from the arena contract</span>
+      </div>
+      <div className="well" style={{ padding: '2px 10px', minHeight: 54 }}>
+        {rows === null ? (
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>No matches have settled on this deployment yet — the first staked match will appear here with its explorer link.</p>
+        ) : rows.slice(0, 5).map((m, i) => {
+          const pot = Number(m.pot) / 1e6;
+          return (
+            <div key={m.tx} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 0', borderTop: i === 0 ? 'none' : '2px solid rgba(0,0,0,.28)' }}>
+              <span style={{ minWidth: 0, flex: 1, display: 'grid' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600 }}>#{m.matchId} · {m.winner.toLowerCase() === '0x0000000000000000000000000000000000000000' ? 'voided / draw' : `${shortAddr(m.winner)} won`}</span>
+                <span className="fine" style={{ fontSize: 11, color: 'var(--dim)' }}>
+                  pot {fmtUsdc(pot)} · paid {fmtUsdc(pot - Number(m.rake) / 1e6)}{m.byTimeout ? ' · by timeout' : ''}{m.at ? ` · ${new Date(m.at * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}
+                </span>
+              </span>
+              <a className="fine" href={explorerUrl(m.tx)} target="_blank" rel="noreferrer" style={{ flexShrink: 0, fontSize: 12 }}>explorer ↗</a>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 type Board = 'trophies' | 'usdc' | 'clans';
 const BOARDS: { id: Board; label: string }[] = [
@@ -218,7 +261,7 @@ export function Empire() {
                  to go and find the tab, which is the moment a first session
                  ends. */
               <div className="well" style={{ padding: '22px 20px', textAlign: 'center', display: 'grid', gap: 12, justifyItems: 'center' }}>
-                <span className="fine">No battles yet — the arena awaits, anon.</span>
+                <span className="fine">No battles played from this browser yet — settled pots are listed under “Settled on” below.</span>
                 <Pill
                   tone="gold"
                   onClick={() => nav('/')}
@@ -263,6 +306,8 @@ export function Empire() {
 
           <ArcStack />
           <LiveOnArc />
+
+          <RecentMatches />
 
           <Leaderboard me={wallet.address} />
 

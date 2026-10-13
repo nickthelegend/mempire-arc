@@ -1,0 +1,80 @@
+# Live Arc testnet end to end
+
+Run on **2026-10-13** against the real Arc testnet deployment (`deployments/arc-testnet.json`, chain 5042002): real
+transactions, a real relay (`server/index.js` on :8780, in-memory store), nothing forked. Script:
+[`server/test-e2e-testnet.mjs`](../server/test-e2e-testnet.mjs). Throwaway player keys live in the gitignored
+`.local/testnet-players.json`; leftovers were swept back to the deployer afterwards.
+
+## What is real and what is not (read this first)
+
+| | Status |
+|---|---|
+| Players, stakes, escrow, plays, claims, payout, rake, $MEMPIRE reward, chest | **Live on Arc testnet** (links below) |
+| Pairing of the two players, the escrow handshake (`opened`/`joined`) and the relayed inputs | **Live**, through the relay's WebSocket |
+| The match itself | The app's **real deterministic lockstep sim**, driven by its built-in bots for both seats and run **faster than real time** (240 s of game time, 76 card drops). It is not two humans playing a 3-minute match in a browser. The first 8 drops per seat were posted on chain by the session keys; the rest stayed in the sim (each drop is one tx, ~0.001 USDC; capped to fit the float). |
+| Settlement | The normal **two-claim path** (both seats claim the sim's winner and final hash; the second claim settles). The timeout path was **not** used here (it is covered by `server/test-e2e.mjs` on a fork). |
+| Prices | **Testnet mirror feeds, not Chainlink.** Chainlink Data Feeds exist on Arc *mainnet* only. The testnet deployment's 20 `MirrorAggregator`s hold copies of the Arc-mainnet Chainlink rounds (same round ids, answers, timestamps), written by our relayer (`server/mirror.js`). That is a **testnet-only trust assumption**; on mainnet the contracts read Chainlink's own feeds. The BTC card below was minted at 82,921.19 = the mirrored round of Chainlink's mainnet BTC/USD at 2026-10-13 17:52:49 UTC. |
+| Mirror seed | To keep the relayer under 1 USDC the mirrors were seeded **sparsely** (56 rounds: the latest round, the round current 24 h earlier and the one after it, per feed) instead of a full day (~665 rounds, ~1 USDC). The first meta post therefore works, but the relay's keeper cannot post a *later* meta until the mirrors are contiguous over 24 h of relay uptime (it logs "no feed has 24h of history yet"). Prices stay valid only while the relay keeps copying new rounds (max price age is 26 h for crypto, 96 h for FX/gold). |
+| Onboarding drip | **Not exercised**: the players were funded directly from the deployer (the drip only pays wallets holding less than `ONBOARD_USDC_DRIP`, set to 0.1 here). The relayer did mint both starter decks. |
+| ERC-8004 rating of the AI opponent | **Not run.** The AI agent is not registered on testnet (needs the hosted relay URL for its agent card, `scripts/register-agent.mjs`). `/api/agent` honestly answers `registered: false` and the app hides the rating buttons. |
+| CCIP/CCTP entry from Base, Circle Gateway top-up, Arc Memo tags | **Not run live** in this pass (fork only). |
+
+## Transactions
+
+Deployment contracts: arena [`0x8808…d551`](https://explorer.testnet.arc.io/address/0x8808BF690f5b9265AcAF5Fb7759E73073606d551), cards
+[`0x1041…c9A`](https://explorer.testnet.arc.io/address/0x1041092bA922a5989588D06b15a62192bdA4fc9A), MarketMeta
+[`0x108E…6D`](https://explorer.testnet.arc.io/address/0x108E70F055DFe8A11fedb5DFF32f69f9045E3b6D).
+
+| Step | Transaction |
+|---|---|
+| Relayer funded (0.5 USDC, from the deployer) | [`0x788468ff…`](https://explorer.testnet.arc.io/tx/0x788468fffe4f0b3c10d7c574f4b0ccd6c3094558df8e3b639258b72008cf9fd0) |
+| Onboarding: starter deck of 8 fighters minted by the relayer, player A | [`0xcdd4cfb9…`](https://explorer.testnet.arc.io/tx/0xcdd4cfb94b3bf60440db7751a3ebec2f1a298880185a8781446bd06827ab421c) |
+| Onboarding: starter deck, player B | [`0xd4e5e629…`](https://explorer.testnet.arc.io/tx/0xd4e5e629f33a66466281a94fa300dc6215d04011f7e4a85c933075a55bd211c6) |
+| Mint a BTC fighter for $0.05 USDC at the feed price (permit inside the tx) | [`0x9345ee2b…`](https://explorer.testnet.arc.io/tx/0x9345ee2b7e4bc992f03e0d8af9c2b83c62f7dc42e8a9eb7d6eedaca5940dbaaf) (a second, accidental re-run mint: [`0x0542f77c…`](https://explorer.testnet.arc.io/tx/0x0542f77c866b68b77ebe285b205a233c68e9e0835a8ac30f09fdb5c89826a3bc)) |
+| Daily meta: `MarketMeta.postFromFeeds` for all 20 fighters, signed by the relayer, computed on chain from the feed history | [`0xd4c1477b…`](https://explorer.testnet.arc.io/tx/0xd4c1477bab78a6b9366420b5678b5cdb928ba4f66c12fd1cee6dfaeffc172848) |
+| Match created: seat 0 stakes $1 (permit inside the tx) + session float | [`0xf2e6b741…`](https://explorer.testnet.arc.io/tx/0xf2e6b74182735a11a68e8f25f8d63233b026c8f2cac33e78d37c89e33afeca22) |
+| Match joined: seat 1 stakes $1 + float | [`0xa6041a11…`](https://explorer.testnet.arc.io/tx/0xa6041a1109ce5286a7619eeb52a5d9fecea64923f062f039a99bcd2b08e6af0b) |
+| 8 card drops by seat 0's session key | [`0x489a466e…`](https://explorer.testnet.arc.io/tx/0x489a466ef0058776a5fcd2c3e365983f581e7040175724f927b5ba6d56dedf91) [`0x95b8a726…`](https://explorer.testnet.arc.io/tx/0x95b8a726b54d605ef2bb62ad12dfdb98081024bb35c553b3e30518a94d63aea7) [`0x283a412b…`](https://explorer.testnet.arc.io/tx/0x283a412bc81b50b72aaa7ef387571303aa69b1d3df561d0456a269f3b2fa211c) [`0x2614d489…`](https://explorer.testnet.arc.io/tx/0x2614d489c8eb8786887d1935350aa2bfddaa577d005a330b8f16961f5452bff0) [`0xf95b5603…`](https://explorer.testnet.arc.io/tx/0xf95b5603f39ae7143244d1506b2d9c65e377169ec7b76cb901617180cd6b273e) [`0x8e5da728…`](https://explorer.testnet.arc.io/tx/0x8e5da728e509f90628cafc39a195a70784b85a644fbc66142cf56a61638f876a) [`0x82e462dc…`](https://explorer.testnet.arc.io/tx/0x82e462dc03689ac4713bad74185f966f8405c00420b1838e1ecefb84377bef84) [`0x3b89910d…`](https://explorer.testnet.arc.io/tx/0x3b89910d99a01c1f6f0bd1245239dea6c66a618df7a4d09ca8f86ca617b206f6) |
+| 8 card drops by seat 1's session key | [`0x8494caaa…`](https://explorer.testnet.arc.io/tx/0x8494caaa1e13511927dffa5d23c9c9ccbbc49d0e3581214a286fd143c60e4fb1) [`0x76dcd096…`](https://explorer.testnet.arc.io/tx/0x76dcd09694b81d8e3484558dffa2d5c89e3834510d09d013f112402fc5643f4a) [`0x9f73a4bb…`](https://explorer.testnet.arc.io/tx/0x9f73a4bb0b0aa8b6915c499562818a0666e362ca4c48f1b3afd4344837e73fd0) [`0xd2cf7206…`](https://explorer.testnet.arc.io/tx/0xd2cf72064d0f5aef67a28a55ab837bdaf6f03cc63ee2e06b342c8f91a466b248) [`0x0a730e1b…`](https://explorer.testnet.arc.io/tx/0x0a730e1b155260f5840a0bdf81c43ae56a8fa2aa051aa1e071dbe2b321a88abb) [`0x4b99cbe2…`](https://explorer.testnet.arc.io/tx/0x4b99cbe2f5f332311fe0641e76666e66e2038a2ff3957225c708d6f922ebbd6e) [`0x5372f01e…`](https://explorer.testnet.arc.io/tx/0x5372f01e3c9c1e3b70c769879150b216419c715dd7424daae92442e995c20306) [`0xfdbe4d32…`](https://explorer.testnet.arc.io/tx/0xfdbe4d32b807071b86c9bb583b167b80ae66b7b15398bede723157293c4d1881) |
+| State-hash checkpoint | [`0x06492465…`](https://explorer.testnet.arc.io/tx/0x06492465abba397bf554eb9e8c046bd7ad0c8b1954a2153fb93e8e8aaa1ee221) |
+| Claim, seat 0 (winner = seat 0) | [`0xa9e2a71f…`](https://explorer.testnet.arc.io/tx/0xa9e2a71f59fcb4cb4acb6183bded8940faf853512ea6c40d828ed554a9b59e15) |
+| **Claim, seat 1: settles, pays the winner $1.80, rake $0.20, 50 $MEMPIRE + chest** | [`0xe31c6d6a…`](https://explorer.testnet.arc.io/tx/0xe31c6d6a11e030dfbd94a6bfd4538bcb99435a50276a265a909ba0c58de60c68) |
+
+Final state: match #1 `Settled`, winner seat 0 (`0xcf37…8be8`), pot $2.00, winner paid **$1.80**, treasury **+$0.20**,
+arena balance **0**. Read back from the arena by the relay at `GET /api/arc/matches` and shown in Empire under
+"Settled on Arc testnet". Both players reported the result to the relay (`POST /api/match`); the relay re-read the
+match from chain and credited **+0.80 / -1.00 net USDC** to the chain-verified leaderboard.
+
+## Checks that passed (`server/test-e2e-testnet.mjs`)
+
+Relay on Arc testnet with mirror prices; both players hold an 8-fighter starter deck minted on chain; the BTC card is
+stamped with exactly the mirrored feed answer; the day-ago round of all 20 fighters is accepted by
+`MarketMeta.feedMomentumBps`; a feed-sourced meta epoch exists; the relay paired the two wallets (ranked, $1 USDC tier,
+same seed and meta epoch); seat 1 received the `opened` handshake and read the match back from chain before staking;
+seat 0 saw `joined`; both stakes escrowed with the meta epoch snapshotted; the arena held the $2 pot; the sim reached a
+result; the play log held 16 drops (8/8); the match settled on the second claim; winner paid exactly $1.80, rake $0.20,
+the arena held nothing after, the winner got the $MEMPIRE reward.
+
+## What went wrong on the way (kept for honesty)
+
+- First run: `createMatch` reverted (`ERC20: transfer amount exceeds balance`): my funding was 0.1 USDC short because the
+  drip was skipped and a duplicate run had minted a second card. Topped up from the deployer.
+- Third run: the settling claim failed with "insufficient funds" on a session key (the claim reserves
+  gas x max-fee = 0.0155 USDC and the 0.02 float was mostly spent). The match was left Active with the stakes escrowed; I
+  topped the session keys up by 0.008 USDC and sent the missing claim by hand (a script that is no longer in the repo).
+  The e2e script now tops session keys up before claiming, so a clean re-run does this in one go, but that exact
+  clean run **has not been executed**; the match above was completed by the manual claim.
+- Gross USDC sent from the deployer for this pass: 2.71 (0.5 relayer, 1.16 + 1.05 players); the players' leftovers (1.85) were swept back, so the
+  net cost was about 0.56 USDC, of which 0.32 is still in the relayer. The 2.5 USDC ceiling was exceeded in *gross* terms
+  because of the two mistakes above.
+
+## Reproduce
+
+```bash
+cd server && set -a && . ./.env.local && set +a        # relayer key; never printed
+PORT=8780 META_KEEPER=0 ONBOARD_USDC_DRIP=0.1 node index.js &     # relay on Arc testnet
+# fund the two players listed in ../.local/testnet-players.json with ~1.1 USDC each, then:
+../app/node_modules/.bin/tsx test-e2e-testnet.mjs
+```
+
+`server/test-gateway-journal.mjs` needs MongoDB and was not part of this pass.

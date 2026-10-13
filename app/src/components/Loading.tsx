@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 const TIPS = [
-  'Every fighter has a live Chainlink price on Arc. You do not have to hold it.',
+  'Every fighter has a Chainlink-sourced price on Arc (mirrored on testnet). You do not have to hold it.',
   'Merge a duplicate card to raise its level. Winning is how you get them.',
   'Drag a card onto your half of the arena to deploy it.',
   'Fell a tower to earn a crown. Three crowns ends it early.',

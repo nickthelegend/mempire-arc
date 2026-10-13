@@ -92,6 +92,15 @@ function loadDeployment(): Deployment | null {
 
 export const DEPLOYMENT: Deployment | null = loadDeployment();
 
+/**
+ * Arc testnet has no Chainlink Data Feeds (they exist on Arc mainnet only), so the testnet
+ * deployment reads MirrorAggregators: copies of Arc-mainnet Chainlink rounds (same round ids,
+ * answers and timestamps) written by our relayer. That is a trust assumption of the testnet
+ * build only; say so wherever a price is shown.
+ */
+export const PRICES_MIRRORED = DEPLOYMENT?.priceFeeds === 'mirror';
+export const MIRROR_NOTE = 'Testnet prices are mirrors of Arc-mainnet Chainlink rounds, copied on chain by our relayer (a testnet-only trust assumption). Real Chainlink feeds are Arc mainnet only.';
+
 const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
 
 /**

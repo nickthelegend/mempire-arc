@@ -24,6 +24,7 @@ import { mintCardTx, readableChainError } from '../chain/actions';
 import { coinByMint } from '../lib/coins';
 import { confirmWithPasskey } from '../lib/passkey';
 import { loadAiStatus, useAiOpponent, type AiBrain } from '../lib/ai';
+import { PRICES_MIRRORED } from '../chain/provider';
 
 /**
  * Recent settlements, read from the chain.
@@ -128,7 +129,7 @@ function ConnectHero() {
         Every coin is a fighter.
       </p>
       <p style={{ color: 'var(--dim)', fontSize: 14, maxWidth: 320, margin: '-8px auto 0' }}>
-        Crypto, gold and FX as fighters, buffed or nerfed by today&apos;s market and priced by Chainlink on Arc.
+        Crypto, gold and FX as fighters, buffed or nerfed by today&apos;s market and {PRICES_MIRRORED ? 'priced by Chainlink rounds mirrored onto Arc testnet.' : 'priced by Chainlink on Arc.'}
         Stake a dollar of USDC, and every card you drop lands on Arc while you play.
       </p>
       <div style={{ padding: '0 12px', marginTop: 6 }}>

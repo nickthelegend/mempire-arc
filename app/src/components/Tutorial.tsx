@@ -29,7 +29,7 @@ const STEPS: TutorialStep[] = [
   {
     anchor: 'deck',
     title: 'Any coin, your army',
-    body: 'Every card is a real asset — a major, a DeFi token, gold or a currency — as a fighter, priced by its Chainlink feed on Arc. You never have to hold it. Today\'s market buffs or nerfs it a little; win matches to earn duplicates and merge them to level it up.',
+    body: 'Every card is a real asset — a major, a DeFi token, gold or a currency — as a fighter, priced by its Chainlink feed (mirrored onto Arc testnet; real feeds on mainnet). You never have to hold it. Today\'s market buffs or nerfs it a little; win matches to earn duplicates and merge them to level it up.',
   },
   {
     anchor: 'tier',
