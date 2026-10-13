@@ -101,6 +101,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
       return matchId;
     } catch (e) {
       const reason = readableChainError(e);
+      console.warn('[escrow] open failed:', reason);
       set({ phase: 'failed', lastError: reason });
       pvpSendChain({ stage: 'failed', reason });
       return null;
@@ -131,6 +132,7 @@ export const useEscrow = create<EscrowStore>((set, get) => ({
       return true;
     } catch (e) {
       const reason = readableChainError(e);
+      console.warn('[escrow] join failed:', reason);
       set({ phase: 'failed', lastError: reason });
       pvpSendChain({ stage: 'failed', reason });
       return false;

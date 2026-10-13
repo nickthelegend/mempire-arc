@@ -12,7 +12,7 @@ import { CLAIM_RESERVE_WEI, sessionFor } from '../chain/session';
  * never awaited by the battle. Arc's sub-second finality means it is usually in a
  * block before the unit has crossed the bridge; the badge shows how long that
  * actually took, measured from send to receipt, because "fast" is a claim and a
- * number is evidence.
+ * number is evidence. Arc finality is deterministic, so a receipt is also final.
  *
  * State-hash checkpoints go on chain every 20 seconds of play. They state the
  * past and never move the play cursor, so a slow checkpoint can never make a
@@ -27,6 +27,21 @@ import { CLAIM_RESERVE_WEI, sessionFor } from '../chain/session';
  */
 
 export type LogPhase = 'off' | 'live' | 'done';
+
+/**
+ * One card play's journey to the chain: sent, then confirmed. Arc blocks are
+ * final the moment they are produced (deterministic finality), so there is no
+ * separate "finalizing" state to wait out.
+ */
+export interface PlayRecord {
+  id: number;
+  tick: number;
+  deckIndex: number;
+  state: 'sent' | 'confirmed' | 'failed';
+  hash?: Hash;
+  /** Send → receipt, in ms. */
+  confirmedMs?: number;
+}
 
 /** A typical play's gas limit (estimate × 1.15). */
 const PLAY_GAS = 45_000n;
@@ -46,6 +61,8 @@ interface PlayLogState {
   /** Send → receipt, in ms, for the most recent confirmed play. */
   lastLatencyMs: number | null;
   avgLatencyMs: number | null;
+  /** The match's plays, newest last (capped). */
+  plays: PlayRecord[];
   budgetWei: bigint;
   /** One logged transaction's cost at this match's gas price. */
   costWei: bigint;
@@ -60,15 +77,22 @@ interface PlayLogState {
 /** Coordinates are fixed-point in the sim; the log stores them as int16. */
 const clamp16 = (v: number) => Math.max(-32768, Math.min(32767, Math.round(v)));
 
+let nextPlayId = 1;
+
 export const usePlayLog = create<PlayLogState>((set, get) => {
-  const watch = (hash: Hash, startedAt: number) => {
-    void publicClient().waitForTransactionReceipt({ hash, pollingInterval: 200, timeout: 30_000 })
+  const patch = (id: number, p: Partial<PlayRecord>) =>
+    set((s) => ({ plays: s.plays.map((r) => (r.id === id ? { ...r, ...p } : r)) }));
+
+  const watch = (hash: Hash, startedAt: number, id: number) => {
+    void publicClient().waitForTransactionReceipt({ hash, pollingInterval: 100, timeout: 30_000 })
       .then((r) => {
         if (r.status !== 'success') {
           set((s) => ({ playsLost: s.playsLost + 1 }));
+          patch(id, { state: 'failed' });
           return;
         }
         const ms = Date.now() - startedAt;
+        patch(id, { state: 'confirmed', confirmedMs: ms });
         set((s) => {
           const n = s.confirmed + 1;
           return {
@@ -79,7 +103,10 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
           };
         });
       })
-      .catch(() => set((s) => ({ playsLost: s.playsLost + 1 })));
+      .catch(() => {
+        set((s) => ({ playsLost: s.playsLost + 1 }));
+        patch(id, { state: 'failed' });
+      });
   };
 
   return {
@@ -92,6 +119,7 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
     lastHash: null,
     lastLatencyMs: null,
     avgLatencyMs: null,
+    plays: [],
     budgetWei: 0n,
     costWei: PLAY_GAS * FALLBACK_GAS_PRICE,
 
@@ -106,7 +134,7 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
       const costWei = PLAY_GAS * ((gasPrice * 11n) / 10n);
       set({
         phase: 'live', matchId, sent: 0, confirmed: 0, playsLost: 0, marksLost: 0,
-        lastHash: null, lastLatencyMs: null, avgLatencyMs: null, costWei,
+        lastHash: null, lastLatencyMs: null, avgLatencyMs: null, plays: [], costWei,
         budgetWei: balance > CLAIM_RESERVE_WEI ? balance - CLAIM_RESERVE_WEI : 0n,
       });
     },
@@ -119,13 +147,22 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
         set((s) => ({ playsLost: s.playsLost + 1 }));
         return;
       }
-      set((s) => ({ sent: s.sent + 1, budgetWei: s.budgetWei - costWei }));
+      const id = nextPlayId++;
+      set((s) => ({
+        sent: s.sent + 1,
+        budgetWei: s.budgetWei - costWei,
+        plays: [...s.plays, { id, tick, deckIndex, state: 'sent' as const }].slice(-40),
+      }));
       const startedAt = Date.now();
       playTx(session, matchId, tick, deckIndex, clamp16(x), clamp16(y))
-        .then((hash) => watch(hash, startedAt))
+        .then((hash) => {
+          patch(id, { hash });
+          watch(hash, startedAt, id);
+        })
         .catch((e) => {
           console.warn(`[log] play at tick ${tick} not sent: ${readableChainError(e)}`);
           set((s) => ({ playsLost: s.playsLost + 1 }));
+          patch(id, { state: 'failed' });
         });
     },
 
@@ -145,6 +182,7 @@ export const usePlayLog = create<PlayLogState>((set, get) => {
     reset: () => set({
       phase: 'off', matchId: null, sent: 0, confirmed: 0, playsLost: 0, marksLost: 0,
       lastHash: null, lastLatencyMs: null, avgLatencyMs: null, budgetWei: 0n,
+      plays: [],
       costWei: PLAY_GAS * FALLBACK_GAS_PRICE,
     }),
   };

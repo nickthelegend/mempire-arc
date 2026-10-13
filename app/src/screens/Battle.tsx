@@ -4,6 +4,8 @@ import { LeagueBadge, TrophyDelta } from '../components/LeagueBadge';
 import { EscrowBadge } from '../components/EscrowBadge';
 import { AgentRating } from '../components/AgentRating';
 import { ArcLogBadge } from '../components/ArcLogBadge';
+import { PlayTicker } from '../components/PlayTicker';
+import { Coach } from '../components/Coach';
 import { Commentary, OpponentBrainBadge } from '../components/Commentary';
 import { CardArtWell } from '../components/CardFrame';
 import { ArchetypeIcon, MoneyRow, Pill } from '../components/ui';
@@ -77,7 +79,7 @@ function ResultOverlay() {
    */
   const awaitingPayout = escrowed && !['settled', 'refunded'].includes(escrowPhase);
   const slotsFull = chainChests.filter((c) => c.state < 4).length >= CHEST_SLOTS;
-  const title = result.voided ? 'Voided' : result.draw ? 'Split' : result.won ? 'Pot Secured' : 'Rekt';
+  const title = result.voided ? 'Voided' : result.draw ? (practice ? 'Draw' : 'Split') : result.won ? (practice ? 'Victory' : 'Pot Secured') : (practice ? 'Defeat' : 'Rekt');
   const color = result.draw ? 'var(--dim)' : result.won ? 'var(--gold)' : 'var(--red)';
   return (
     <div style={{
@@ -215,9 +217,11 @@ function ResultOverlay() {
       {mode === 'bot' && opponentName === 'Kimi (AI)' && (
         <AgentRating aiWon={!result.won && !result.draw} matchRef={`ai:${Date.now()}`} />
       )}
-      <p className="fine" style={{ fontSize: 12 }}>
-        {result.hashes} state hashes committed · settled by final-state signature
-      </p>
+      {escrowed && (
+        <p className="fine" style={{ fontSize: 12 }}>
+          {result.hashes} state hashes committed · settled by final-state signature
+        </p>
+      )}
       <Pill onClick={() => { dismiss(); nav('/'); }}>Return to Arena</Pill>
     </div>
   );
@@ -505,6 +509,7 @@ export function Battle() {
 
   return (
     <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+      <Coach />
       {/* top bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
@@ -557,7 +562,7 @@ export function Battle() {
         </div>
         {/* Which layer this match is running on, and where its money is. Both
             belong next to the pot, because both are claims about what is real —
-            and "0.1 SOL" printed above a match that escrowed nothing is exactly
+            and a pot printed above a match that escrowed nothing is exactly
             the claim this pair exists to keep honest. */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
           <ArcLogBadge />
@@ -565,6 +570,7 @@ export function Battle() {
           {/* Who holds the other seat: the classic bot or Kimi. */}
           {match.mode === 'bot' && <OpponentBrainBadge />}
         </div>
+        <PlayTicker />
         {/* A third row, not an absolute overlay — it was landing on top of the
             crown score for the entire double-elixir phase and all of overtime. */}
         {doubleElixir && sim.phase !== 'ended' && (
