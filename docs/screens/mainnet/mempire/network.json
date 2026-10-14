@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "db": "memory",
+  "persistent": false,
+  "chain": {
+    "chainId": 5042,
+    "rpc": "https://rpc.mainnet.arc.io",
+    "deployment": true,
+    "relayer": "0x0DFd565F0C6c96De3372De7B965E376D6A64dbE8",
+    "relayerFunding": {
+      "address": "0x0DFd565F0C6c96De3372De7B965E376D6A64dbE8",
+      "balance": "0.877610577",
+      "required": "0.05",
+      "drip": "0",
+      "needsTopUp": false
+    },
+    "prices": "chainlink",
+    "ccipGateway": "0x54A42df299044B79d5FefF43b74a70517c801985",
+    "keeper": {
+      "enabled": false,
+      "epoch": 0,
+      "hash": null,
+      "at": 0,
+      "error": null,
+      "fighters": 0
+    },
+    "mirror": {
+      "enabled": false,
+      "at": 0,
+      "pushed": 0,
+      "error": null
+    },
+    "ccip": {
+      "enabled": true,
+      "at": 0,
+      "retried": 0,
+      "waiting": 0,
+      "error": null
+    }
+  }
+}

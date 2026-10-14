@@ -1,0 +1,23 @@
+[
+  {
+    "base": "https://mempire-arc.vercel.app",
+    "routes": [
+      "/#/",
+      "/#/cards",
+      "/#/deck",
+      "/#/clan",
+      "/#/empire"
+    ],
+    "waitMs": 9000,
+    "name": "mempire",
+    "contract": "0x3F1b2Fb46C95e1B406338e28bDe54f585536A4Ec",
+    "networkApi": "https://mempire-arc.vercel.app/api/health",
+    "requireVisible": false,
+    "requireExplorer": false,
+    "chainPath": [
+      "chain",
+      "chainId"
+    ],
+    "apiContract": false
+  }
+]

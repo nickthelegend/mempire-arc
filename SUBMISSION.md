@@ -1,14 +1,14 @@
 # Mempire — Arc Microgrants submission
 
-Frontend: https://mempire-arc.vercel.app (Live testnet reads). PvP requires a locally operated relay; hosted Atlas persistence is unavailable. [Hosting](docs/HOSTING.md).
+Live: https://mempire-arc.vercel.app (Arc mainnet, chain 5042)
 
 
 | | |
 |---|---|
 | Project | Mempire: a real-time 1v1 card battler where the market is the meta |
-| Network | **Arc testnet (live, 5042002)**: addresses in `deployments/arc-testnet.json`; mainnet-ready, not deployed: `CONFIRM_MAINNET=yes sh scripts/deploy.sh mainnet` |
+| Network | **Arc mainnet (live, 5042)**: `deployments/arc-mainnet.json`; earlier testnet flow evidence remains separate. |
 | Repo | https://github.com/nickthelegend/mempire-arc (MIT) |
-| Live app | Not hosted yet (run locally against Arc testnet: see README); live testnet match: `docs/E2E-TESTNET.md` |
+| Live app | https://mempire-arc.vercel.app — mainnet HTTP reads; PvP requires the on-demand local relay. |
 | Demo video | None |
 
 ## Description (≤150 words)
@@ -85,3 +85,7 @@ Testnet **5042002: Live**; [testnet deployment](deployments/arc-testnet.json) an
 
 Mainnet smoke: [Smoke: mint eight starter cards with live roster](https://explorer.arc.io/tx/0xed4afeb9369cb61b24b4448f53e5ef77d71c947bdd594ec37d3964cfd6fe3da9).
 <!-- /MAINNET-ADDRESSES -->
+
+## Production network
+
+Live: https://mempire-arc.vercel.app (Arc mainnet, chain 5042). [Hosted mainnet checks](docs/HOSTED-MAINNET.md). PvP needs the on-demand local WebSocket relay. Hosted HTTP reads do not demonstrate a completed multiplayer match. No mainnet transactions were sent during the hosting migration. Historical **Live (testnet)** and **Fork** results elsewhere in this document are separate evidence, not production smoke results.

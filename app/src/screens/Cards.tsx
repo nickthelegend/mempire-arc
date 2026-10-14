@@ -354,7 +354,7 @@ export function Cards() {
       <header><h1 className="display" style={{fontSize:30}}>Meet your fighters</h1>
         <p className="fine">Twenty assets. Twenty characters. Pick your favourites before your first match.</p></header>
       <Pill onClick={openPicker}>Play your first match</Pill>
-      <p className="fine">{MIRROR_NOTE} Browsing is free; signing in is only needed to collect and play.</p>
+      <p className="fine">{PRICES_MIRRORED ? MIRROR_NOTE : "Prices are read from Chainlink Data Feeds on Arc mainnet."} Browsing is free; signing in is only needed to collect and play.</p>
       <div style={{display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:'18px 10px'}}>
         {COINS.map(coin => <div key={coin.mint}>
           <CardFrame fluid width={110} card={{id:`catalogue-${coin.coinId}`, mint:coin.mint, level:1, archetype:archetypeForFeed(coin.feedId) as 0|1|2|3|4|5}} />

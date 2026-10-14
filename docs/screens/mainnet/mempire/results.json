@@ -1,0 +1,75 @@
+{
+  "at": "2026-10-14T15:56:02.140Z",
+  "base": "https://mempire-arc.vercel.app",
+  "readOnly": true,
+  "consoleErrors": [],
+  "results": [
+    {
+      "route": "/#/",
+      "status": 200,
+      "bodyPresent": true,
+      "testnetWording": [],
+      "wrongExplorerLinks": [],
+      "pageErrors": [],
+      "ok": true
+    },
+    {
+      "route": "/#/cards",
+      "status": 200,
+      "bodyPresent": true,
+      "testnetWording": [],
+      "wrongExplorerLinks": [],
+      "pageErrors": [],
+      "ok": true
+    },
+    {
+      "route": "/#/deck",
+      "status": 200,
+      "bodyPresent": true,
+      "testnetWording": [],
+      "wrongExplorerLinks": [],
+      "pageErrors": [],
+      "ok": true
+    },
+    {
+      "route": "/#/clan",
+      "status": 200,
+      "bodyPresent": true,
+      "testnetWording": [],
+      "wrongExplorerLinks": [],
+      "pageErrors": [],
+      "ok": true
+    },
+    {
+      "route": "/#/empire",
+      "status": 200,
+      "bodyPresent": true,
+      "testnetWording": [],
+      "wrongExplorerLinks": [],
+      "pageErrors": [],
+      "ok": true
+    },
+    {
+      "networkApi": "https://mempire-arc.vercel.app/api/health",
+      "status": 200,
+      "chainId": 5042,
+      "ok": true
+    },
+    {
+      "rpc": "https://rpc.mainnet.arc.io",
+      "chainId": 5042,
+      "contract": "0x3F1b2Fb46C95e1B406338e28bDe54f585536A4Ec",
+      "codeBytes": 13336,
+      "ok": true
+    },
+    {
+      "mainnetVisible": true,
+      "explorerLinks": 0,
+      "ok": true
+    },
+    {
+      "mobileOverflow": false,
+      "ok": true
+    }
+  ]
+}

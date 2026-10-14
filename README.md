@@ -1,13 +1,13 @@
 # Mempire on Arc
 
-**Hosted frontend:** https://mempire-arc.vercel.app (Arc testnet). Static UI and HTTP functions are on Vercel. Atlas persistence is currently unavailable from Vercel; public chain reads work. PvP requires the local WebSocket relay, which has not been hosted. [Hosting and relay requirements](docs/HOSTING.md).
+Live: https://mempire-arc.vercel.app (Arc mainnet, chain 5042)
 
 
 **A real-time 1v1 card battler where the market is the meta — every fighter is priced from a Chainlink Data Feed (Chainlink's own feeds on Arc mainnet; mirrors of them on Arc testnet), every pot is USDC, and the contract pays the winner in the block the second result lands.**
 
 Every fighter is a real asset: majors (BTC, ETH, SOL…), DeFi tokens (LINK, UNI, AAVE), gold (PAXG) and fiat currencies (EUR, JPY, BRL…). Each one is priced by its **Chainlink Data Feed** (on Arc mainnet; Arc testnet has none, so the testnet deployment reads on-chain mirrors of the mainnet rounds, see the trust note below), and yesterday-to-today's move buffs or nerfs it a little — computed on chain. Two players put up a dollar of **USDC**, play a three-minute lane battle, and the arena pays 90% of the pot to the winner. Passkey sign-in is implemented but its browser ceremony remains unverified. The game uses **one token** — USDC is the stake *and* the gas.
 
-- Arc testnet: **deployed and played**. Token, cards, MarketMeta (20 feed mirrors), arena and CCIP gateway are live ([`deployments/arc-testnet.json`](deployments/arc-testnet.json)); a real $1 staked match was paired by the relay, played by the app's sim and settled with the winner paid on chain: [docs/E2E-TESTNET.md](docs/E2E-TESTNET.md). Mainnet is **not** deployed (phase gate).
+- Arc testnet: **deployed and played**. Token, cards, MarketMeta (20 feed mirrors), arena and CCIP gateway are live ([`deployments/arc-testnet.json`](deployments/arc-testnet.json)); a real $1 staked match was paired by the relay, played by the app's sim and settled with the winner paid on chain: [docs/E2E-TESTNET.md](docs/E2E-TESTNET.md). Mainnet contracts are deployed: [deployment evidence](docs/MAINNET-DEPLOYMENT.md).
 - **Testnet price trust assumption.** Chainlink Data Feeds exist on Arc *mainnet* only. On testnet every fighter's "feed" is a `MirrorAggregator` holding copies of Arc-mainnet Chainlink rounds (same ids, answers, timestamps) that our relayer writes. Anyone judging testnet prices is trusting that relayer; mainnet reads Chainlink directly. The app says so wherever it shows a price.
 - **2026-10-14 improvements:** all 20 fighters have portraits; visitors can browse the roster before sign-in; Mongo uses the separate `mempire_arc` database; the public settlement panel and net USDC standings read chain events without a relay. **Live browser match #3:** two isolated guest contexts played 180 seconds with 44 confirmed card drops and matching claims; the winner received $1.80. Settlement/leaderboard verification resumed after an event-indexing race. [Receipts, screenshots and exact limits](docs/E2E-TESTNET.md).
 - Also runs end to end on a local fork of **Arc mainnet** with one command.
@@ -96,7 +96,7 @@ ARC_ANVIL=…/arc-anvil ARC_FORGE=…/forge ARC_CAST=…/cast ./scripts/local-up
 
 ## Deployments
 
-| Network | File | Status |
+| Network | **Arc mainnet (live, 5042)**: `deployments/arc-mainnet.json`; earlier testnet flow evidence remains separate. |
 |---|---|---|
 | Arc testnet (5042002) | [`deployments/arc-testnet.json`](deployments/arc-testnet.json) | **Live** (31 txs, 0.79 USDC). Not verified on the explorer yet. Live match: [docs/E2E-TESTNET.md](docs/E2E-TESTNET.md) |
 | Arc mainnet (5042) | [`deployments/arc-mainnet.json`](deployments/arc-mainnet.json) | Not deployed (phase gate). Dry run against live mainnet passes (18.7M gas ≈ 0.37 USDC at 20 gwei). See [MAINNET.md](MAINNET.md) |
@@ -155,3 +155,7 @@ Testnet **5042002: Live**; [testnet deployment](deployments/arc-testnet.json) an
 
 Mainnet smoke: [Smoke: mint eight starter cards with live roster](https://explorer.arc.io/tx/0xed4afeb9369cb61b24b4448f53e5ef77d71c947bdd594ec37d3964cfd6fe3da9).
 <!-- /MAINNET-ADDRESSES -->
+
+## Production network
+
+Live: https://mempire-arc.vercel.app (Arc mainnet, chain 5042). [Hosted mainnet checks](docs/HOSTED-MAINNET.md). PvP needs the on-demand local WebSocket relay. Hosted HTTP reads do not demonstrate a completed multiplayer match. No mainnet transactions were sent during the hosting migration. Historical **Live (testnet)** and **Fork** results elsewhere in this document are separate evidence, not production smoke results.
