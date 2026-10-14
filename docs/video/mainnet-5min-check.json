@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-14T19:02:06.052Z",
+  "afterRender": "2026-10-14T19:00:55.159Z",
+  "chainId": 5042,
+  "successfulReceipts": 133,
+  "expectedRevertReceipts": 0,
+  "total": 133,
+  "exactFees": true,
+  "hostedPageRendered": true,
+  "explorerRendered": true
+}
