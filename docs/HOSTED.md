@@ -19,3 +19,5 @@ Deploy from the repo root with `railway up --service relay`, then `railway up --
 Prices are relayer-maintained testnet mirrors of Chainlink mainnet reads, clearly labeled in the app. The mirror may temporarily report public RPC throttling while catching up. The bot is the scripted classic bot; no Kimi key or live ERC-8004 agent registration is configured. Cross-chain travel is not a hosted end-to-end claim. Match staking requires a wallet and testnet USDC; the hosted smoke uses the cheaper mint path rather than a 1-USDC staked match. Prior full match evidence remains in docs/E2E-TESTNET.md.
 
 Verified 2026-10-14: all six route documents and health returned 200; all five hash navigation views rendered without console errors, and `/battle` safely returned to Arena without an active match. Live market meta was visible. WebSocket upgrade and exact-origin CORS passed. Railway app and relay deployments both reached SUCCESS.
+
+The optional CCIP watcher still reports RPC rate limiting even at 100-block ranges; automatic cross-chain retry is degraded. Core Arc minting, market reads and WebSocket transport passed.
