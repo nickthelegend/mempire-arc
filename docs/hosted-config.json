@@ -1,0 +1,21 @@
+{
+  "base": "https://mempire-arc.vercel.app",
+  "routes": [
+    "/#/",
+    "/#/cards",
+    "/#/deck",
+    "/#/clan",
+    "/#/empire"
+  ],
+  "api": [
+    "/api/health",
+    "/api/coins"
+  ],
+  "contract": "0x8808BF690f5b9265AcAF5Fb7759E73073606d551",
+  "waitMs": 9000,
+  "firstStep": {
+    "route": "/#/cards",
+    "name": "Play your first match",
+    "expect": "Play as Guest"
+  }
+}

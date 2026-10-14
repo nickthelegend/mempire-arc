@@ -1,23 +1,22 @@
-# Hosted Arc testnet
+# Mempire — Vercel / Live testnet
 
-Live: https://app-production-ddd3.up.railway.app (Arc testnet)
+LEAD: RUN THESE
+```sh
+node scripts/e2e-browser-hosted.mjs
+npm run typecheck
+npm test
+```
 
-Railway project `mempire-arc-testnet`: `app` (Vite/nginx), `relay` (Express + WebSocket matchmaking + keepers), `MongoDB` (persistent database).
-Relay: https://relay-production-9f6c.up.railway.app — `/api/health` reports chain 5042002 and persistent storage. Frontend CORS is explicitly allowed. Addresses come from the versioned Arc testnet deployment in shared/deployments/5042002.json, matching deployments/arc-testnet.json.
+Frontend and HTTP API: https://mempire-arc.vercel.app. The Vite static export and existing Express request/response API deploy from the repo root using vercel.json. Contract data comes from deployments/arc-testnet.json and its shared/5042002.json copy.
+Public cards, art, chain prices, market modifiers and settled-match receipts work without a game relay. The Empire proof panel reads the chain directly. Atlas rejects Vercel access (health persistent=false); clan/ladder persistence is unavailable. Chain reads remain independent of Atlas. No temporary storage is offered as durable player data.
 
-Deploy from the repo root with `railway up --service relay`, then `railway up --service app`. Dockerfiles are in `docker/`; build upload ignores exclude env files, keys, local test wallets, dependencies and generated output. The relay key is a Railway secret; Mongo uses a Railway service reference. The frontend receives only its public API URL and chain ID.
+The API reuses existing Atlas credentials with MONGODB_DB=arc_mempire_testnet. No database service was provisioned. VERCEL skips listening sockets and all continuous keepers. No relayer key, AI key or automatic starter funding is configured in this hosted pass.
+PvP requires the local relay: one Node process (~512 MiB RAM) with WebSockets, shared in-memory rooms/input ordering and Atlas. HTTP polling cannot preserve the existing real-time lockstep protocol or matchmaking state across isolated invocations. Start it only for the recording; see docs/HOSTING.md for the exact local command. No always-on resource was created. Keeper and mirror work can be called on demand; no scheduled broadcasts were enabled.
 
-## Evidence
+Env: VITE_CHAIN_ID=5042002, CHAIN_ID=5042002, VITE_RPC_URL, RPC_URL, MONGODB_URI (secret), MONGODB_DB=arc_mempire_testnet, CORS_ORIGIN, PUBLIC_APP_URL, PUBLIC_API_URL, META_KEEPER=0, MIRROR_KEEPER=0, ONBOARD_USDC_DRIP=0. VITE_API_URL and VITE_RELAY_URL remain unset: same-origin HTTP, explicit no-relay state. All values are uploaded via stdin without logging credentials.
+Deploy: vercel link --project mempire-arc; vercel deploy --prod --yes. .vercelignore excludes credentials, contract artifacts and local data.
+Screenshots and browser assertions replace deleted-host evidence in docs/screens/hosted/. No transaction was sent during this hosting pass. Earlier real two-player testnet settlement used a local relay; it is not a Vercel PvP claim.
 
-- Public route and health responses: `docs/screens/hosted/*-http.json`.
-- Browser route screenshots and console check: `docs/screens/hosted/`.
-- Real testnet action: BTC fighter mint for 0.05 USDC, gas-inclusive ceiling 0.06229908 USDC. Transaction: https://explorer.testnet.arc.io/tx/0xc630f17a58f452dca41cc8df19f1987a5a2ca0af057c77ec1911997c0d1dac80 . Script: `server/hosted-smoke.mjs` (source the deployer environment inside a command and hold the shared deployer lock).
-- The stale preflight requirement for the removed oracle was replaced with the deployed CCIP gateway check. CCIP log scans use 100-block chunks, at most ten per tick, to respect the public RPC limits.
+Build, API dependency tracing, and 15 unit tests pass. The Vercel tracer initially evaluated an uninitialized CCIP cursor as null plus BigInt; leaving the cursor uninitialized until its first tick fixes tracing without changing runtime behavior.
 
-## Limits
-
-Prices are relayer-maintained testnet mirrors of Chainlink mainnet reads, clearly labeled in the app. The mirror may temporarily report public RPC throttling while catching up. The bot is the scripted classic bot; no Kimi key or live ERC-8004 agent registration is configured. Cross-chain travel is not a hosted end-to-end claim. Match staking requires a wallet and testnet USDC; the hosted smoke uses the cheaper mint path rather than a 1-USDC staked match. Prior full match evidence remains in docs/E2E-TESTNET.md.
-
-Verified 2026-10-14: all six route documents and health returned 200; all five hash navigation views rendered without console errors, and `/battle` safely returned to Arena without an active match. Live market meta was visible. WebSocket upgrade and exact-origin CORS passed. Railway app and relay deployments both reached SUCCESS.
-
-The optional CCIP watcher still reports RPC rate limiting even at 100-block ranges; automatic cross-chain retry is degraded. Core Arc minting, market reads and WebSocket transport passed.
+Production verification: all five navigation tabs return HTTP 200 with zero console errors or broken images; 390 px mobile fits. Opening the account picker works without a backend write. Health and roster HTTP APIs pass, and arena bytecode is verified on chain 5042002. Full account onboarding, hosted PvP and persistent clans/ladder remain unavailable/not run.

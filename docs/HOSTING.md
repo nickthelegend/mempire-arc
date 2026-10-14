@@ -1,7 +1,7 @@
 # Hosting Mempire on Arc
 
 **Frontend: Vercel. No Railway or paid infrastructure is provisioned by this pass.**
-The old Railway URL is legacy deployment information, not proof that the current build is hosted.
+Live testnet frontend: https://mempire-arc.vercel.app. Production screenshots and checks are in [HOSTED.md](HOSTED.md).
 
 ## What works without a game relay
 
@@ -13,7 +13,7 @@ a production indexer will be needed as historical volume grows.
 
 `api/index.mjs` exports the existing Express HTTP app for Vercel functions. `VERCEL=1` skips the listening socket and
 all continuous keepers. Configure the Vercel project from the **repo root** using `vercel.json` (install app/server,
-build app, serve app/dist). The API needs `MONGODB_URI` (secret), `MONGODB_DB=mempire_arc`, `CHAIN_ID=5042002` and
+build app, serve app/dist). The API needs `MONGODB_URI` (secret), `MONGODB_DB=arc_mempire_testnet`, `CHAIN_ID=5042002` and
 `RPC_URL=https://rpc.testnet.arc.io`. Set `CORS_ORIGIN` to the frontend origin. Never use a `VITE_` prefix for secrets.
 Leave `VITE_API_URL` unset so hosted HTTP calls use the same origin. `VITE_RELAY_URL` is independently optional.
 
@@ -42,7 +42,6 @@ mirror maintenance. Those transactions spend USDC even though hosting itself is 
 
 ## Verification boundary
 
-Local production frontend build and the HTTP handler are checked separately. A successful local build is **not a Vercel
-production deployment**. The escrow-ready handshake and complete browser match #3 are proven on live testnet with a local relay; payout and
+The production frontend and HTTP functions are now deployed on Vercel. Atlas access remains blocked; health reports persistent=false. The escrow-ready handshake and complete browser match #3 are proven on live testnet with a local relay; payout and
 leaderboard verification passed in a continuation after the harness hit a log-indexing race. This is not a hosted
 production acceptance. See E2E-TESTNET.md.

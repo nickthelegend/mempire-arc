@@ -36,7 +36,7 @@ import { errorRecorder, rateLimiter, registerOpsRoutes, walletLimiter } from './
 import { applyMatch, leagueFor } from './ranking.js';
 import { registerMatchmaker } from './matchmaker.js';
 
-const { MONGODB_URI, MONGODB_DB = 'mempire_arc', PORT = 8787 } = process.env;
+const { MONGODB_URI, MONGODB_DB = 'arc_mempire_testnet', PORT = 8787 } = process.env;
 
 /*
  * Mongo when configured, process memory when not.
@@ -47,7 +47,7 @@ const { MONGODB_URI, MONGODB_DB = 'mempire_arc', PORT = 8787 } = process.env;
  * `/api/health`, because "everything vanished on restart" should never be a
  * surprise.
  */
-const client = MONGODB_URI ? new MongoClient(MONGODB_URI, { serverSelectionTimeoutMS: 8000 }) : null;
+const client = MONGODB_URI ? new MongoClient(MONGODB_URI, { serverSelectionTimeoutMS: process.env.VERCEL ? 3000 : 8000, maxPoolSize: 3 }) : null;
 if (!client) {
   console.warn('MONGODB_URI not set — running on an in-memory store; nothing persists across a restart');
 }

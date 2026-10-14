@@ -1,6 +1,6 @@
 # Mempire — Arc Microgrants submission
 
-Frontend target: Vercel; revised build not deployed in this pass. PvP requires a separately operated relay. [Hosting](docs/HOSTING.md).
+Frontend: https://mempire-arc.vercel.app (Live testnet reads). PvP requires a locally operated relay; hosted Atlas persistence is unavailable. [Hosting](docs/HOSTING.md).
 
 
 | | |

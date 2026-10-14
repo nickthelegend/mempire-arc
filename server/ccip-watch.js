@@ -21,7 +21,8 @@ const FAILED = parseAbiItem('event MessageFailed(bytes32 indexed messageId, uint
 const CHUNK = 100n; // Arc public RPC log-range limit
 const pending = new Map(); // messageId → { message, firstSeen }
 const done = new Set();
-let fromBlock = null;
+// Leave the cursor uninitialized until tick: Vercel tracing must not fold null + a BigInt chunk.
+let fromBlock;
 let last = { at: 0, retried: 0, waiting: 0, error: null };
 export const ccipWatchStatus = () => ({ enabled: enabled(), ...last, waiting: pending.size });
 

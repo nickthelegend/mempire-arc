@@ -1,6 +1,6 @@
 # Mempire on Arc
 
-**Hosting:** Vercel frontend/serverless HTTP configuration is in `vercel.json`; the revised build has not been deployed in this pass. PvP still requires one always-on WebSocket relay, which has not been provisioned. [Hosting and relay requirements](docs/HOSTING.md).
+**Hosted frontend:** https://mempire-arc.vercel.app (Arc testnet). Static UI and HTTP functions are on Vercel. Atlas persistence is currently unavailable from Vercel; public chain reads work. PvP requires the local WebSocket relay, which has not been hosted. [Hosting and relay requirements](docs/HOSTING.md).
 
 
 **A real-time 1v1 card battler where the market is the meta — every fighter is priced from a Chainlink Data Feed (Chainlink's own feeds on Arc mainnet; mirrors of them on Arc testnet), every pot is USDC, and the contract pays the winner in the block the second result lands.**

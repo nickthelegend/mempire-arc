@@ -65,7 +65,7 @@ One instance (the matchmaker is in-process). `server/Dockerfile`, root directory
 | `CHAIN_ID` | `5042` |
 | `RPC_URL` | `https://rpc.mainnet.arc.io` (or a provider RPC) |
 | `RELAYER_PRIVATE_KEY` | the relayer key (secret) |
-| `MONGODB_URI`, `MONGODB_DB` | Atlas URI (secret), `mempire_arc` |
+| `MONGODB_URI`, `MONGODB_DB` | Atlas URI (secret), `arc_mempire_mainnet` |
 | `CORS_ORIGIN` | the Vercel app origin |
 | `PUBLIC_APP_URL` / `PUBLIC_API_URL` | app origin / this relay's origin |
 | `ONBOARD_MAINNET_MIN_USDC` | `1` |
@@ -79,12 +79,12 @@ instructions whose USDC arrived after them). The testnet feed mirror is off on m
 
 ### App (Vercel)
 
-Root directory `app/`, build `npm run build` (preflight refuses a build without a deployment for its chain).
+Root directory repository root, build `npm run build` via `vercel.json` (preflight refuses a build without a deployment for its chain).
 
 | Variable | Value |
 |---|---|
 | `VITE_CHAIN_ID` | `5042` |
-| `VITE_API_URL` | the relay origin |
+| `VITE_API_URL` | unset for same-origin HTTP functions; use `VITE_RELAY_URL` only for a separate game relay |
 | `VITE_RPC_URL` | optional provider RPC |
 | `VITE_INDEXER_URL` | Envio endpoint (optional) |
 | `VITE_REMOTE_ENTRY_BASE` / `VITE_REMOTE_ENTRY_ETHEREUM` | from `deploy-remote.sh` |
