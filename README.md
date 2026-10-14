@@ -137,3 +137,21 @@ prefund the wallets before another match. The settlement/browser checks can be r
 `E2E_MATCH_ID` and `E2E_SETTLEMENT_TX`; see the exact match #3 command in [E2E-TESTNET.md](docs/E2E-TESTNET.md).
 `E2E_STAGE=onboard` exercises sign-in/deck onboarding only. `E2E_EXTERNAL_SERVERS=1` uses already running local services.
 A sandbox that denies Chromium launch must be changed by the operator; the script does not bypass it.
+
+<!-- MAINNET-ADDRESSES -->
+## Addresses — live mainnet and testnet
+
+Mainnet **5042: Live**, deployed 2026-10-14. [All mainnet addresses and transaction receipts](docs/MAINNET-DEPLOYMENT.md).
+Testnet **5042002: Live**; [testnet deployment](deployments/arc-testnet.json) and [testnet evidence](docs/E2E-TESTNET.md).
+
+- arena: [0x3F1b2Fb46C95e1B406338e28bDe54f585536A4Ec](https://explorer.arc.io/address/0x3F1b2Fb46C95e1B406338e28bDe54f585536A4Ec).
+- cards: [0xE28f4571e0fb238106b52AbAa1C579ff6642FA63](https://explorer.arc.io/address/0xE28f4571e0fb238106b52AbAa1C579ff6642FA63).
+- ccipGateway: [0x54A42df299044B79d5FefF43b74a70517c801985](https://explorer.arc.io/address/0x54A42df299044B79d5FefF43b74a70517c801985).
+- ccipRouter: [0xB79791184973589c38e114D43Eb8E4588C283A18](https://explorer.arc.io/address/0xB79791184973589c38e114D43Eb8E4588C283A18).
+- creForwarder: [0x0000000000000000000000000000000000000000](https://explorer.arc.io/address/0x0000000000000000000000000000000000000000).
+- marketMeta: [0xC9910d40a9cA037dbEcab6ba2e3c7c146020B79C](https://explorer.arc.io/address/0xC9910d40a9cA037dbEcab6ba2e3c7c146020B79C).
+- token: [0x48F55b579E078dF3f6d6A7015DD957C688a43468](https://explorer.arc.io/address/0x48F55b579E078dF3f6d6A7015DD957C688a43468).
+- tokenMessenger: [0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d](https://explorer.arc.io/address/0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d).
+
+Mainnet smoke: [Smoke: mint eight starter cards with live roster](https://explorer.arc.io/tx/0xed4afeb9369cb61b24b4448f53e5ef77d71c947bdd594ec37d3964cfd6fe3da9).
+<!-- /MAINNET-ADDRESSES -->

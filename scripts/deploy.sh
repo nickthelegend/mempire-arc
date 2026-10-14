@@ -66,7 +66,7 @@ cd contracts
 run() { DEPLOYER_PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY" "$FORGE" script script/Deploy.s.sol --network arc --rpc-url "$RPC" --slow "$@"; }
 if [ -n "$DRY_RUN" ]; then ADDRESSES_OUT=none run; exit 0; fi
 
-LOCK="$ROOT/../.deployer/lock"
+LOCK="${DEPLOY_LOCK:-$ROOT/../.deployer/lock}"
 until mkdir "$LOCK" 2>/dev/null; do echo "waiting for the deployer lock…"; sleep 3; done
 trap 'rmdir "$LOCK" 2>/dev/null; rm -f "$ADDRESSES_OUT"' EXIT
 run --broadcast
