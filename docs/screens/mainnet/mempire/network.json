@@ -1,7 +1,7 @@
 {
   "ok": true,
-  "db": "memory",
-  "persistent": false,
+  "db": "arc_mempire_mainnet",
+  "persistent": true,
   "chain": {
     "chainId": 5042,
     "rpc": "https://rpc.mainnet.arc.io",
@@ -9,7 +9,7 @@
     "relayer": "0x0DFd565F0C6c96De3372De7B965E376D6A64dbE8",
     "relayerFunding": {
       "address": "0x0DFd565F0C6c96De3372De7B965E376D6A64dbE8",
-      "balance": "0.877610577",
+      "balance": "0.806329072890621525",
       "required": "0.05",
       "drip": "0",
       "needsTopUp": false

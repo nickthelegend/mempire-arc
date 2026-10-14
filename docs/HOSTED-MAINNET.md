@@ -17,6 +17,13 @@ The previous production artifacts were retained at `https://mempire-arc-testnet.
 
 This migration performs reads only: no wallet connection, signature, deposit, payment, withdrawal or chain broadcast. Mainnet contract/deployment transaction evidence is recorded separately in the repository. Local executors remain an on-demand demo requirement, not an always-on hosting service provisioned here.
 
-Current backend check: `/api/health` reports mainnet but `persistent=false` (memory mode); durable storage remains unavailable from Vercel.
 
 Verified: 5 routes returned HTTP 200 with no rendered testnet wording, wrong Arc explorer link or uncaught page exception. Network APIs and RPC reported chain 5042; expected mainnet contract bytecode was present. Screenshots and machine-readable results are saved beside this report.
+
+## Final hosted polish — 2026-10-15
+
+Atlas now reports persistent:true. `node scripts/check-hosted-persistence.mjs` signs an empty profile for an ephemeral unfunded identity, writes it via the hosted API, and reads it twice. No match, money or leaderboard result is fabricated. Both video players already appear on the hosted leaderboard; no backfill was needed.
+
+Re-run: `node scripts/e2e-browser-hosted-mainnet.mjs`.
+
+No mainnet broadcasts or paid API calls. Live mainnet reads and DB writes only; fork transactions and complete wallet sign-ins: Not run.

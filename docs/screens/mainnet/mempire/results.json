@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-14T16:27:17.540Z",
+  "at": "2026-10-14T20:28:55.563Z",
   "base": "https://mempire-arc.vercel.app",
   "readOnly": true,
   "consoleErrors": [],
@@ -64,7 +64,7 @@
     },
     {
       "mainnetVisible": true,
-      "explorerLinks": 0,
+      "explorerLinks": 1,
       "ok": true
     },
     {
