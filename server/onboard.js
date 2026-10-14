@@ -46,6 +46,7 @@ import {
   IS_MAINNET, IS_TEST_CHAIN, abis, archetypeOf, coinById, deployment, normAddress, publicClient, roster,
 } from './chain.js';
 import { checkRelayer, relayerAddress, relayerRefusal, sendRelayerTx } from './relayer.js';
+import { onboardDrip, relayFunding } from './onboard-funding.js';
 import { recordEvent } from './telemetry.js';
 
 const DECK_SIZE = 8;
@@ -91,13 +92,6 @@ export function chooseStarterDeck(coins, archetypeFor) {
   return picked.map((c) => c.coinId);
 }
 
-/**
- * Gas headroom the relayer must keep beyond the drip itself before it accepts
- * a claim. Eight mints cost well under a cent of USDC at Arc's ~20–25 gwei base
- * fee; this leaves a wide margin.
- */
-const GAS_RESERVE = parseEther('0.05');
-
 const short = (e) => String(e?.shortMessage ?? e?.message ?? e).split('\n')[0].slice(0, 200);
 
 export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
@@ -105,10 +99,7 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
   const claims = db.collection('onboard_claims');
 
   // Native USDC has 18 decimals, so parseEther reads "2" as 2 USDC.
-  const drip = (() => {
-    const raw = process.env.ONBOARD_USDC_DRIP ?? '2';
-    try { return parseEther(raw); } catch { return parseEther('2'); }
-  })();
+  const drip = onboardDrip();
 
   /*
    * The starter deck, chosen once at boot from the vendored roster — and then
@@ -219,14 +210,10 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
      * have to come back for. Checking first turns that into a message an
      * operator can act on, with nothing written.
      */
-    const funds = await client.getBalance({ address: relayerAddress() }).catch(() => 0n);
-    const needed = GAS_RESERVE + (IS_TEST_CHAIN ? drip : 0n);
-    if (funds < needed) {
-      return res.status(503).json({
-        error: 'the onboarding relayer is out of USDC for gas — nothing was claimed, try again later',
-        relayerUsdc: formatEther(funds),
-      });
-    }
+    let funding;
+    try { funding = await relayFunding(); }
+    catch { return res.status(503).json({ error: 'Could not read relay USDC balance. Try again shortly.' }); }
+    if (funding?.needsTopUp) return res.status(503).json({ ...funding, relayerUsdc: funding.balance });
 
     /*
      * One claim per address, taken before anything is sent.
@@ -284,6 +271,11 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
         steps[name] = 'failed';
         if (e?.hash) txs[name] = e.hash;
         errors[name] = short(e);
+        if (/insufficient funds/i.test(errors[name])) {
+          const funding = await relayFunding().catch(() => null);
+          errors[name] = funding?.error ?? 'Relay needs a top-up to pay for this starter kit. Ask the operator to fund it and try again.';
+        }
+        console.error(`onboard ${address} ${name}: ${errors[name]}${e?.hash ? ` tx ${e.hash}` : ''}`);
       }
     };
 
@@ -333,7 +325,7 @@ export function registerOnboardRoutes(app, db, { ipGate, readGate } = {}) {
         starterClaimed,
         usdc: { balance: formatEther(native), units: (native / 10n ** 12n).toString(), wei: native.toString() },
         claim: claim
-          ? { at: claim.at, complete: !!claim.complete, steps: claim.steps ?? {}, txs: claim.txs ?? {} }
+          ? { at: claim.at, complete: !!claim.complete, running: !!claim.running, steps: claim.steps ?? {}, txs: claim.txs ?? {}, errors: claim.errors ?? {} }
           : null,
       });
     } catch (e) {

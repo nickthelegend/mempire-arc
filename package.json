@@ -1,10 +1,15 @@
 {
-  "name": "mempire-arc", "private": true, "type": "module",
+  "name": "mempire-arc",
+  "private": true,
+  "type": "module",
   "scripts": {
     "build": "npm --prefix app run build",
     "typecheck": "npm --prefix app run typecheck",
-    "test": "npm --prefix server run test:unit",
-    "e2e:two-players": "node --env-file=server/.env.local scripts/e2e-two-players.mjs"
+    "test": "npm --prefix server run test:unit && app/node_modules/.bin/tsx --test app/tests/*.test.ts",
+    "e2e:two-players": "node --env-file=server/.env.local scripts/e2e-two-players.mjs",
+    "e2e:onboard-api": "app/node_modules/.bin/tsx --env-file=server/.env.local scripts/e2e-onboard-api.mjs"
   },
-  "engines": {"node": ">=24"}
+  "engines": {
+    "node": ">=24"
+  }
 }

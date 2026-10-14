@@ -58,7 +58,7 @@ let refusal = null;
     refusal = 'RELAYER_PRIVATE_KEY is the deployer key — use a separate relayer key';
     return;
   }
-  wallet = createWalletClient({ account, chain, transport: http(RPC_URL, { retryCount: 1, timeout: 20_000 }) });
+  wallet = createWalletClient({ account, chain, transport: http(RPC_URL, { retryCount: 3, retryDelay: 1000, timeout: 20_000 }) });
 })();
 
 /** The relayer's address, or null when there is no usable key. */

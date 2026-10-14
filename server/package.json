@@ -8,7 +8,7 @@
     "sync-shared": "node sync-shared.mjs",
     "test:onboard": "node test-onboard.mjs",
     "test:auth": "node test-auth.mjs",
-    "test:unit": "node --test test-auth.mjs test-memstore.mjs test-chain-id.mjs test-settlements.mjs"
+    "test:unit": "node --test test-auth.mjs test-memstore.mjs test-chain-id.mjs test-settlements.mjs test-onboard-funding.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

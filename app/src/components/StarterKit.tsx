@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { IS_MAINNET } from '../chain/provider';
-import { fetchStarterClaimed } from '../chain/read';
+import { DEPLOYMENT, IS_MAINNET } from '../chain/provider';
 import { Pill, Spinner } from './ui';
-import { apiPost } from '../lib/api';
+import { apiFetch, apiPost } from '../lib/api';
+import { finishOnboarding } from '../lib/onboarding';
 import { useChain } from '../state/chain';
 import { useWallet } from '../state/wallet';
 
@@ -24,12 +24,9 @@ import { useWallet } from '../state/wallet';
 
 type Phase = 'idle' | 'busy' | 'done' | 'failed' | 'gone';
 
-const triedThisSession = new Set<string>();
-
 export function StarterKit() {
   const address = useWallet((s) => s.address);
   const connected = useWallet((s) => s.connected);
-  const mode = useChain((s) => s.mode);
   const cards = useChain((s) => s.cards);
   const refreshSettled = useChain((s) => s.refreshSettled);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -39,18 +36,21 @@ export function StarterKit() {
   // funded) or 'unconfigured' (mainnet: no drip).
   const [usdc, setUsdc] = useState<string | null>(null);
   const balance = useWallet((s) => s.usdc);
-  const started = useRef(false);
+  const started = useRef<string | null>(null);
 
   const claim = async () => {
     setPhase('busy');
     setError(null);
     const t0 = performance.now();
     try {
-      const r = await apiPost('/api/onboard', 'onboard', {});
-      if (!r) throw new Error('could not reach the relay, or this account could not sign');
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error ?? `the relay answered ${r.status}`);
-      await refreshSettled();
+      const j = await finishOnboarding(
+        () => apiPost('/api/onboard', 'onboard', {}),
+        () => apiFetch(`/api/onboard/${address}`),
+        async () => {
+          if (address) await useChain.getState().loadWallet(address);
+          await refreshSettled();
+        },
+      );
       setTook(performance.now() - t0);
       setUsdc(typeof j?.usdc === 'string' ? j.usdc : null);
       setPhase('done');
@@ -61,17 +61,16 @@ export function StarterKit() {
   };
 
   useEffect(() => {
-    if (!connected || !address || mode === 'offline') return;
+    if (!connected || !address || !DEPLOYMENT) return;
     // Mainnet: the relay mints the free deck only once the account holds $1.
     if (IS_MAINNET && balance < 1) return;
-    if (cards.length > 0 || started.current || triedThisSession.has(address)) return;
-    started.current = true;
-    triedThisSession.add(address);
-    void fetchStarterClaimed(address).then((claimed) => {
-      if (!claimed) void claim();
-    }).catch(() => { /* the button below is the fallback */ });
+    if (cards.length > 0 || started.current === address) return;
+    started.current = address;
+    // The relay checks starterClaimed itself. A preliminary browser RPC read
+    // could fail after marking this session tried, leaving no request or UI.
+    void claim();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, address, mode, cards.length, balance >= 1]);
+  }, [connected, address, cards.length, balance >= 1]);
 
   if (phase === 'gone' || phase === 'idle') return null;
 

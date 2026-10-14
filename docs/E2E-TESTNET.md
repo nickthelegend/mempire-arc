@@ -125,3 +125,51 @@ node --env-file=server/.env.local server/test-history-read.mjs
 
 The full browser acceptance must still be run on a host allowed to launch Chromium. Its printed transaction links
 and private `evidence.json` should be copied here only after the payout assertion passes.
+
+## 2026-10-14: second-player onboarding repair — Live (testnet)
+
+Re-run commands (local ports 8700, 8780–8781; stop the other harness first):
+
+```sh
+npm run e2e:onboard-api
+E2E_STAGE=onboard npm run e2e:two-players
+npm run e2e:two-players
+npm test && npm run typecheck && npm run build
+```
+
+**Root causes reproduced without a browser:** the UI's eight-second HTTP deadline expired even though the first
+starter mint completed. The immediately following onboarding returned HTTP 502, with the Arc RPC's `-32005`
+“Request exceeds defined limit” (details: “rate limit exceeded”). There was no stuck per-player nonce lock.
+The browser also had a silent dead end: it marked onboarding attempted before reading `starterClaimed`, swallowed
+a failed read, and never rendered a retry button. An initial failed wallet load also prevented onboarding entirely.
+
+**Changes:** the relay remains authoritative for the already-claimed check. The app reconciles an ambiguous POST
+through the durable claim status without resending it, reloads the real wallet, and displays partial errors.
+Multicall3 combines read bursts; RPC throttling uses bounded backoff. The local harness disables the unrelated CCIP
+watcher (including its retry broadcasts). Health exposes `chain.relayerFunding` with the current balance,
+required amount and top-up status. Unaffordable onboarding returns `RELAY_NEEDS_TOP_UP` and a visible operator
+funding message. The browser harness prints child stderr, onboarding responses and player state on failure.
+
+**Fresh-wallet API result: PASS.** Same signed EIP-191 request and eight-second HTTP deadline as the UI; two fresh
+wallets back-to-back, each verified with eight on-chain cards and a 0.02 USDC drip. Player 1 took 12.075 seconds
+(including status reconciliation); player 2 took 7.160 seconds. No HTTP/test timeout was lengthened.
+
+| Player | Starter mint | USDC drip |
+|---|---|---|
+| `0x77283A28d0916bc23F8B019da05d4A4D6A27d199` | [Mint](https://explorer.testnet.arc.io/tx/0x7f253cf8c81ec2217015d1c42f4924bc682b90cba79dee93778c2d7211648a8f) | [0.02 USDC](https://explorer.testnet.arc.io/tx/0x6421e0deb56330057811166f9eb11dac6d0d7e6080778c602ce2298a299b57b8) |
+| `0x5A33Fd60251fbd897AC3f8554e9F349d7264DA90` | [Mint](https://explorer.testnet.arc.io/tx/0xfe6ce35fc212cf2f207cc0b5b6c50d85ea088256ad5597345432d50368da5cd2) | [0.02 USDC](https://explorer.testnet.arc.io/tx/0xc0d74d592759d2fd3726e09ab97d2b4b5b476b324a7b9b0574492e922a37cbcb) |
+
+**Chromium result: onboarding PASS**, both saved guest contexts (1280px and 390px), no horizontal overflow.
+The previously blocked `0xC197b197f53989AbFEd867BA60505F10F8199942` received its deck in
+[this mint](https://explorer.testnet.arc.io/tx/0xc9de74ca47f5a73d3f21232d8eb21a0634be1e73b81bd9b3516912cf65f3e016).
+
+**Full staked match: NOT COMPLETE.** Ran `npm run e2e:two-players`; both decks passed, then funding safely refused:
+“Two $1 stakes plus gas need 2.28 USDC temporary funding. Default gross cap is 2.” Both saved players have zero
+USDC. No match or payout occurred in this pass; a 2.30 USDC temporary float needs explicit budget authorization
+(or separately funded wallets). The requested approval was still pending when this evidence was recorded.
+All started relays, Vite and Chromium processes were stopped. No hosting resources were created.
+
+Testnet USDC used in this investigation: **0.174320075 gross** from the existing relay balance (2.579221375 →
+2.4049013), including successful diagnostic mints and the two 0.02 drips. No deployer funding transaction was sent.
+Tests: 8 server test entries (including 27 auth/store assertions), 4 onboarding regressions, typecheck and production
+build pass; lint exits 0 with existing warnings. Build retains the existing large-chunk warning.

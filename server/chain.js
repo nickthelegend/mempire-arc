@@ -123,6 +123,7 @@ export const chain = defineChain({
   // Native USDC: 18 decimals natively; the ERC-20 at USDC views the same balance with 6.
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
+  contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
 });
 
 let pub = null;
@@ -134,7 +135,8 @@ let pub = null;
 export function publicClient() {
   pub ??= createPublicClient({
     chain,
-    transport: http(RPC_URL, { retryCount: 2, timeout: 15_000 }),
+    batch: { multicall: { wait: 16 } },
+    transport: http(RPC_URL, { retryCount: 3, retryDelay: 1000, timeout: 15_000 }),
   });
   return pub;
 }

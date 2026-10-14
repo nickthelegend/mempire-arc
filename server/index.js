@@ -28,6 +28,7 @@ import { registerAiRoutes } from './ai.js';
 import { registerNftRoutes } from './nft.js';
 import { registerOnboardRoutes } from './onboard.js';
 import { registerPlayerRoutes } from './player.js';
+import { relayFunding } from './onboard-funding.js';
 import { relayerAddress } from './relayer.js';
 import { recordEvent, registerTelemetryRoutes } from './telemetry.js';
 import { registerInsightRoutes } from './insights.js';
@@ -172,6 +173,7 @@ app.get('/api/health', async (_req, res) => {
     rpc: RPC_URL,
     deployment: Boolean(deployment),
     relayer: relayerAddress(),
+    relayerFunding: await relayFunding().catch(() => ({ error: 'Relay balance unavailable' })),
     prices: deployment?.priceFeeds ?? null,
     ccipGateway: deployment?.ccipGateway ?? null,
     keeper: keeperStatus(),

@@ -27,7 +27,10 @@ const pageErrors=[];
 let browser; let startedBlock; let completed=false;
 const record=(kind,hash)=>{receipts.push({kind,hash});console.log(`${kind}: https://explorer.testnet.arc.io/tx/${hash}`);};
 function start(cwd,args,extra={}) {
- const child=spawn(process.execPath,args,{cwd:new URL(cwd,ROOT),env:{...process.env,...extra},stdio:['ignore','ignore','ignore']});
+ const child=spawn(process.execPath,args,{cwd:new URL(cwd,ROOT),env:{...process.env,...extra},stdio:['ignore','pipe','pipe']});
+ child.stderrLog = '';
+ child.stdout.on('data',()=>{});
+ child.stderr.on('data',d=>{child.stderrLog=(child.stderrLog+d.toString()).slice(-16000);});
  children.push(child); return child;
 }
 async function waitFor(check,label,timeout=90000) {
@@ -40,7 +43,7 @@ async function snapshot(page) {
   const [{useWallet},{useMatch},{useEscrow},{useChain},{usePlayLog}]=await Promise.all([
    import('/src/state/wallet.ts'),import('/src/state/match.ts'),import('/src/state/escrow.ts'),import('/src/state/chain.ts'),import('/src/state/playLog.ts')]);
   const w=useWallet.getState(),m=useMatch.getState(),e=useEscrow.getState(),c=useChain.getState(),l=usePlayLog.getState();
-  return {address:w.address,balance:w.usdc,cards:c.cards.length,status:m.status,mode:m.mode,phase:e.phase,matchId:e.matchId,error:e.lastError,
+  return {connected:w.connected,chainMode:c.mode,chainError:c.error,address:w.address,balance:w.usdc,cards:c.cards.length,status:m.status,mode:m.mode,phase:e.phase,matchId:e.matchId,error:e.lastError,
    tick:m.sim?.tick,result:m.result,plays:l.confirmed,unlogged:l.playsLost,tx:e.lastSignature};
  });
 }
@@ -92,7 +95,7 @@ try {
  // Launch before spending or onboarding, so a host sandbox refusal costs nothing.
  browser=await chromium.launch({headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--use-angle=swiftshader']});
  if(process.env.E2E_EXTERNAL_SERVERS!=='1') {
-  start('server',['--env-file=.env.local','index.js'],{PORT:'8780',META_KEEPER:'0',MIRROR_KEEPER:'0',ONBOARD_USDC_DRIP:'0'});
+  start('server',['--env-file=.env.local','index.js'],{PORT:'8780',META_KEEPER:'0',MIRROR_KEEPER:'0',CCIP_WATCH:'0',ONBOARD_USDC_DRIP:'0'});
   start('app',['node_modules/vite/bin/vite.js','--host','127.0.0.1'],{PORT:'8700',VITE_CHAIN_ID:'5042002',VITE_API_URL:api,VITE_RELAY_URL:api});
  }
  await waitFor(async()=>{try{return(await fetch(api+'/api/health')).ok && (await fetch(origin)).ok;}catch{return false;}},'local services');
@@ -102,6 +105,7 @@ try {
   let saved;try{saved=JSON.parse(await fs.readFile(new URL(`wallet-${i}.json`,local)));}catch{}
   if(saved)await context.addInitScript(data=>{for(const [k,v] of Object.entries(data.local))localStorage.setItem(k,v);for(const [k,v] of Object.entries(data.session))sessionStorage.setItem(k,v);},saved);
   const page=await context.newPage();pages.push(page);
+  page.on('response',async r=>{try{if(r.url()===api+'/api/onboard')console.log(`Player ${i+1} onboarding HTTP ${r.status()}: ${await r.text()}`);}catch{/* page closed */}});
   page.on('pageerror',()=>pageErrors.push(`Browser ${i+1} uncaught error`));
   await page.goto(origin);
   if(!saved) {
@@ -166,7 +170,10 @@ try {
   console.log('PASS: UI onboarding, two isolated player contexts, real-time card clicks, both claims, $1.80 payout.');
  }
 } catch(e) {
- console.error(`E2E NOT COMPLETE: ${String(e.shortMessage??e.message).split('\n')[0]}`);process.exitCode=1;
+ console.error(`E2E NOT COMPLETE: ${String(e.shortMessage??e.message).split('\n')[0]}`);
+ for(const child of children)console.error(`Child ${child.pid} stderr:\n${child.stderrLog.replace(/0x[0-9a-fA-F]{64}/g,'[redacted 32-byte value]') || '(empty)'}`);
+ for(const page of pages)try{console.error('Player state:',JSON.stringify(await snapshot(page)));console.error('Starter UI:',await page.locator('section[aria-live]').allTextContents());}catch{}
+ process.exitCode=1;
 } finally {
  for(let i=0;i<pages.length;i++) {
   try {
@@ -181,5 +188,5 @@ try {
  }
  await secure('transactions.json',receipts);
  await browser?.close();
- for(const child of children)child.kill('SIGTERM');
+ await Promise.all(children.map(child=>new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);child.kill('SIGTERM');})));
 }

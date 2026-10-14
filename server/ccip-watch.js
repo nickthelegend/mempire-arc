@@ -25,7 +25,7 @@ let fromBlock = null;
 let last = { at: 0, retried: 0, waiting: 0, error: null };
 export const ccipWatchStatus = () => ({ enabled: enabled(), ...last, waiting: pending.size });
 
-const enabled = () => Boolean(deployment?.ccipGateway && deployment.ccipGateway !== '0x0000000000000000000000000000000000000000' && relayerAddress());
+const enabled = () => process.env.CCIP_WATCH !== '0' && Boolean(deployment?.ccipGateway && deployment.ccipGateway !== '0x0000000000000000000000000000000000000000' && relayerAddress());
 
 export async function tickCcipWatch() {
   if (!enabled()) return 0;

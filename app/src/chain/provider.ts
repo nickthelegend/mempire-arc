@@ -137,8 +137,9 @@ let client: PublicClient | null = null;
 export function publicClient(): PublicClient {
   if (!client) {
     client = createPublicClient({
-      chain: CHAIN,
-      transport: http(RPC_URL, { retryCount: 3, retryDelay: 250, batch: { wait: 16 } }),
+      chain: { ...CHAIN, contracts: { ...CHAIN.contracts, multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } } },
+      batch: { multicall: { wait: 16 } },
+      transport: http(RPC_URL, { retryCount: 3, retryDelay: 1000, batch: { wait: 16 } }),
       // Arc finalises in under a second; polling slower than that only makes
       // a confirmed transaction look slow.
       pollingInterval: 300,
