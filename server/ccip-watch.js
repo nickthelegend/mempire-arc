@@ -18,7 +18,7 @@ import { abis, deployment, publicClient } from './chain.js';
 import { relayerAddress, sendRelayerTx } from './relayer.js';
 
 const FAILED = parseAbiItem('event MessageFailed(bytes32 indexed messageId, uint64 indexed sourceChainSelector, bytes sender, bytes data, bytes reason)');
-const CHUNK = 5_000n;
+const CHUNK = 100n; // Arc public RPC log-range limit
 const pending = new Map(); // messageId → { message, firstSeen }
 const done = new Set();
 let fromBlock = null;
@@ -33,7 +33,8 @@ export async function tickCcipWatch() {
   const head = await client.getBlockNumber();
   fromBlock ??= BigInt(deployment.startBlock ?? head);
   // Catch up in bounded chunks: public RPCs cap eth_getLogs ranges.
-  while (head >= fromBlock) {
+  let chunks = 0;
+  while (head >= fromBlock && chunks++ < 10) {
     const to = fromBlock + CHUNK - 1n < head ? fromBlock + CHUNK - 1n : head;
     const logs = await client.getLogs({ address: deployment.ccipGateway, event: FAILED, fromBlock, toBlock: to });
     for (const l of logs) {
@@ -65,7 +66,7 @@ export async function tickCcipWatch() {
       last = { ...last, error: String(e?.shortMessage ?? e?.message ?? e).slice(0, 160) };
     }
   }
-  last = { ...last, at: Date.now(), retried: last.retried + retried };
+  last = { ...last, error: null, at: Date.now(), retried: last.retried + retried };
   return retried;
 }
 

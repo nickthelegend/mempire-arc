@@ -1,0 +1,9 @@
+{
+  "network": "Live Arc testnet",
+  "api": "https://relay-production-9f6c.up.railway.app",
+  "action": "Mint BTC fighter",
+  "hash": "0xc630f17a58f452dca41cc8df19f1987a5a2ca0af057c77ec1911997c0d1dac80",
+  "feeUSDC": 0.05,
+  "maxCostUSDC": "0.06229908",
+  "gasUsed": "244247"
+}

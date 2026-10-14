@@ -1,5 +1,8 @@
 # Mempire on Arc
 
+Live: https://app-production-ddd3.up.railway.app (Arc testnet)
+
+
 **A real-time 1v1 card battler where the market is the meta — every fighter is priced from a Chainlink Data Feed (Chainlink's own feeds on Arc mainnet; mirrors of them on Arc testnet), every pot is USDC, and the contract pays the winner in the block the second result lands.**
 
 Every fighter is a real asset: majors (BTC, ETH, SOL…), DeFi tokens (LINK, UNI, AAVE), gold (PAXG) and fiat currencies (EUR, JPY, BRL…). Each one is priced by its **Chainlink Data Feed** (on Arc mainnet; Arc testnet has none, so the testnet deployment reads on-chain mirrors of the mainnet rounds, see the trust note below), and yesterday-to-today's move buffs or nerfs it a little — computed on chain. Two players put up a dollar of **USDC**, play a three-minute lane battle, and the arena pays 90% of the pot to the winner. Sign in with a passkey: no seed phrase, no extension, no popups mid-match, and **one token** — USDC is the stake *and* the gas.

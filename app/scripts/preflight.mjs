@@ -24,7 +24,7 @@ if (!existsSync(file) && process.env.ALLOW_NO_DEPLOYMENT === '1') {
 } else {
   const d = JSON.parse(readFileSync(file, 'utf8'));
   if (Number(d.chainId) !== chainId) fail.push(`deployment file is stamped chain ${d.chainId}, build is for ${chainId}`);
-  for (const k of ['token', 'cards', 'arena', 'marketMeta', 'usdc', 'oracle']) {
+  for (const k of ['token', 'cards', 'arena', 'marketMeta', 'usdc', 'ccipGateway']) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(String(d[k] ?? ''))) fail.push(`deployment is missing a valid "${k}" address`);
   }
 }

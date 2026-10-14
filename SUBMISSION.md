@@ -1,5 +1,8 @@
 # Mempire — Arc Microgrants submission
 
+Live: https://app-production-ddd3.up.railway.app (Arc testnet)
+
+
 | | |
 |---|---|
 | Project | Mempire: a real-time 1v1 card battler where the market is the meta |
