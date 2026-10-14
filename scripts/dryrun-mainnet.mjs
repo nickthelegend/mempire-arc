@@ -1,0 +1,31 @@
+import * as c from './dryrun-common.mjs';
+await c.run('mempire',async()=>{
+ const n='mempire',d=c.load(n),ca=c.abi(n,'MempireCards'),aa=c.abi(n,'MempireArena');
+ const {createMatch,hashState,stepSim}=await import('../app/src/sim/engine.ts');
+ const {decideBot}=await import('../app/src/sim/bot.ts');
+ const {OVERTIME_TICKS,REGULATION_TICKS}=await import('../app/src/sim/types.ts');
+ c.roleKey('relayer','mempire','RELAYER_PRIVATE_KEY',d.relayer);
+ for(const role of ['buyer','buyer2','relayer','verifier','issuer'])await c.fund(n,role);
+ const roster=await c.read(d.cards,ca,'roster');
+ const price=await c.read(d.cards,ca,'priceOf',[0]);
+ const fee=await c.read(d.cards,ca,'mintFee');
+ await c.write(n,'card mint at Chainlink feed price','buyer',d.cards,ca,'mint',[0,await c.permit('buyer',d.cards,fee)]);
+ c.note('cardPricing',{chainlinkFeed:roster[0].feed,price,mintFee:fee,note:'Chainlink sets the card mintPrice attribute; the USDC mint fee is fixed separately.'});
+ for(const role of ['buyer','buyer2'])await c.write(n,'starter deck '+role,'relayer',d.cards,ca,'mintStarter',[c.roles[role],[0,1,2,3,4,5,6,7]]);
+ const decks=await Promise.all(['buyer','buyer2'].map(async role=>{const [ids,data]=await c.read(d.cards,ca,'cardsOf',[c.roles[role]]);return {ids:ids.slice(-8),data:data.slice(-8)};}));
+ const id=await c.read(d.arena,aa,'nextMatchId');
+ await c.memoWrite(n,'create $1 match permit','buyer',d.arena,aa,'createMatch',[0,decks[0].ids,c.roles.verifier,250000n,await c.permit('buyer',d.arena,1250000n)]);
+ await c.memoWrite(n,'join $1 match permit','buyer2',d.arena,aa,'joinMatch',[id,decks[1].ids,c.roles.issuer,250000n,await c.permit('buyer2',d.arena,1250000n)]);
+ const match=await c.read(d.arena,aa,'getMatch',[id]);
+ const modifiers=await Promise.all(roster.map((_,i)=>c.read(d.marketMeta,c.abi(n,'MarketMeta'),'modifierBps',[match.metaEpoch,i])));
+ const simDeck=deck=>deck.data.map(k=>({coinId:roster[Number(k.coinId)].feedId.toLowerCase(),name:roster[Number(k.coinId)].ticker,archetype:Number(k.archetype),level:Number(k.level),metaBps:Number(modifiers[Number(k.coinId)])}));
+ const sim=createMatch(Number(match.seed),decks.map(simDeck)),pending=new Map(),events=[];
+ while(sim.phase!=='ended'&&sim.tick<REGULATION_TICKS+OVERTIME_TICKS+10){for(const player of [0,1]){const ev=decideBot(sim,player,player===0?'hard':'normal');if(ev){events.push(ev);pending.set(ev.tick,[...(pending.get(ev.tick)??[]),ev]);}}stepSim(sim,pending.get(sim.tick)??[]);pending.delete(sim.tick-1);}
+ if(sim.phase!=='ended')throw Error('Simulation did not finish');
+ const first=events[0];
+ await c.write(n,'a session-signed play',first.player===0?'verifier':'issuer',d.arena,aa,'play',[id,first.tick,first.deckIndex,first.x,first.y]);
+ const winner=sim.winner===-2?2:sim.winner,hash=c.toHex(BigInt(hashState(sim)>>>0),{size:32});
+ for(const role of ['verifier','issuer'])await c.write(n,'claim '+role+(role==='issuer'?' and settle':''),role,d.arena,aa,'claim',[id,winner,hash]);
+ const final=await c.read(d.arena,aa,'getMatch',[id]);if(Number(final.state)!==3)throw Error('Settlement failed');
+ c.note('settlement',{id,winner,finalHash:hash,final,scope:'Bot-driven local game simulation; one play and both agreeing claims exercised on-chain. No two-browser claim.'});
+});

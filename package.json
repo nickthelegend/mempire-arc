@@ -7,7 +7,8 @@
     "typecheck": "npm --prefix app run typecheck",
     "test": "npm --prefix server run test:unit && app/node_modules/.bin/tsx --test app/tests/*.test.ts",
     "e2e:two-players": "node --env-file=server/.env.local scripts/e2e-two-players.mjs",
-    "e2e:onboard-api": "app/node_modules/.bin/tsx --env-file=server/.env.local scripts/e2e-onboard-api.mjs"
+    "e2e:onboard-api": "app/node_modules/.bin/tsx --env-file=server/.env.local scripts/e2e-onboard-api.mjs",
+    "dryrun:mainnet": "node --import ./scripts/dryrun-loader.mjs scripts/dryrun-mainnet.mjs"
   },
   "engines": {
     "node": ">=24"
