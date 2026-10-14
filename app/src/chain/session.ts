@@ -34,7 +34,7 @@ export const SESSION_GAS_WEI = 100_000_000_000_000_000n; // 0.1 USDC
  * session float plus the stake transaction's own gas (~400k gas). The relay's
  * testnet drip (2 USDC) covers a $1 stake and this several times over.
  */
-export const STAKE_USDC_NEEDED = 0.12;
+export const STAKE_USDC_NEEDED = 0.13;
 /** Kept back from logging so the seat can always afford to record its result. */
 export const CLAIM_RESERVE_WEI = 25_000_000_000_000_000n; // 0.025 USDC: includes the second claim’s settlement gas ceiling
 

@@ -43,5 +43,6 @@ mirror maintenance. Those transactions spend USDC even though hosting itself is 
 ## Verification boundary
 
 Local production frontend build and the HTTP handler are checked separately. A successful local build is **not a Vercel
-production deployment**. The two-browser staked test must pass on a machine allowed to launch Chromium before claiming
-that the revised escrow-ready handshake is proven live. See E2E-TESTNET.md.
+production deployment**. The escrow-ready handshake and complete browser match #3 are proven on live testnet with a local relay; payout and
+leaderboard verification passed in a continuation after the harness hit a log-indexing race. This is not a hosted
+production acceptance. See E2E-TESTNET.md.

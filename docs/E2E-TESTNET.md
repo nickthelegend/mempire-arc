@@ -1,3 +1,82 @@
+# Two-player browser match — Live (testnet), 2026-10-14
+
+**Match #3 completed through two isolated Chromium contexts at 1280px and 390px.** Both saved guest wallets
+staked $1 USDC, played the normal 180-second match through card/canvas clicks, and submitted the same result.
+Winner `0x86bC6fFef9e591a3079CE3F8180a14553a2785C3` earned $1.80; loser
+`0xC197b197f53989AbFEd867BA60505F10F8199942` earned $0. Both claims named seat 0 and final hash `0x548b1fec`.
+The browser snapshots reached tick 3601, recorded **25 / 19 confirmed card plays, zero unlogged**, and a 1–0 crown result.
+These are automated UI inputs to two human-player seats, not the built-in bot, two physical human testers, a fork,
+an accelerated simulation, or a manually submitted replacement claim.
+
+## Re-run commands (LEAD: RUN THESE)
+
+From the repo root; local app :8700, relay :8780. Each command stops its own servers and Chromium.
+
+```sh
+# Verify the existing match, USDC transfer, and both browser leaderboards; no new stake:
+E2E_STAGE=verify E2E_MATCH_ID=3 E2E_SETTLEMENT_TX=0x94504dc3b9eb8c136678c200bfd536612b9a2d345b6e6b760cfb6796adda1107 npm run e2e:two-players
+# Play another complete match (requires both saved wallets to hold at least $1.13):
+E2E_MAX_FUNDING=0 npm run e2e:two-players
+npm test
+npm run typecheck
+npm run build
+```
+
+The default funding allowance is **zero**. An explicit `E2E_MAX_FUNDING` can authorize at most one extra USDC;
+the harness only tops up a wallet below the shared $1.13 stake/gas threshold. Successful acceptance returns remaining
+player/session funds to the deployer, so a future new match needs prefunded wallets. Private keys and recovery storage
+remain in ignored `.local/two-players/`, never in this evidence. Verification reuses an existing settlement receipt.
+
+## Match #3 receipts
+
+| Step | Live Arc testnet transaction |
+|---|---|
+| Player 1 stakes $1 + $0.10 session float | [Create](https://explorer.testnet.arc.io/tx/0xc10d9e9de311fdec3ed9b087e506142cb701fcc69f11c891dcd4e6c82ff6a3f7) |
+| Player 2 stakes $1 + $0.10 session float | [Join](https://explorer.testnet.arc.io/tx/0xbc7644e85a685ed4007100a628235290e2b337ad64027e8b1b0e664cba93f41d) |
+| Losing seat submits the shared result | [First claim](https://explorer.testnet.arc.io/tx/0xe0b63689bbb39437fcd531358fe75b59784d65e4bcf8c2dbe235d8cac797bf3e) |
+| Winning seat submits the same result; contract pays $1.80 and takes $0.20 rake | [Second claim and settlement](https://explorer.testnet.arc.io/tx/0x94504dc3b9eb8c136678c200bfd536612b9a2d345b6e6b760cfb6796adda1107) |
+
+Both claims were sent by the application. `byTimeout=false`; no dispute, timeout claim, forced winner or backend payout.
+The acceptance verifier checks the actual USDC `Transfer` from the arena to the winner, not just the advertised pot.
+Money standings are derived from chain events: winner **1W / +$0.80 net**, loser **1L / −$1 net**.
+
+Screens: [player 1 battle](screens/testnet/two-players-1280.png), [player 2 battle](screens/testnet/two-players-390.png),
+[player 1 leaderboard](screens/testnet/two-players-leaderboard-1280.png), [player 2 leaderboard](screens/testnet/two-players-leaderboard-390.png).
+
+## Failures reproduced and fixed
+
+1. **Harness:** Ranked existed and was enabled, but its infinite `ctaBreathe` animation failed Playwright's stability
+   check 56 times. Native `reducedMotion: 'reduce'` stops decoration; normal locator clicks now work. No force click or
+   app-state injection. The harness explicitly chooses Pauper/$1 and preserves storage changes across reloads.
+2. **App:** a mined stake was rejected because the finalized RPC head had not caught up. The transaction journal now
+   waits up to 20 finality polls without changing the signed call or resubmitting it. Exact call and canonical-block
+   checks remain mandatory; pending/invalid proof preserves the journal. Three regressions cover lag, mismatch and stall.
+3. **App:** Arena considered $1.12 sufficient while matchmaking required $1.13, silently separating the wallets into
+   staked and rating queues. Both now use `STAKE_USDC_NEEDED=0.13`.
+4. **Harness:** settlement state arrived before the log query returned `MatchSettled`. The match already paid, but
+   `assert(settled)` ended the first run before leaderboard screenshots. Verification was resumed against **that same
+   match**, not a second stake or replacement claim. The harness now polls events using a fresh head and saves gameplay
+   evidence before checking indexed logs. The combined revised harness has **not** been rerun as a new funded match.
+
+The unused match #2 was cancelled through Empire's recovery UI after checking the original receipt; its $1 stake and
+pending session float were returned. [Cancellation](https://explorer.testnet.arc.io/tx/0x060cc423f69fc39d244b845f4213560f09fb329210e9b04e515534e693b919a6), [Original open](https://explorer.testnet.arc.io/tx/0x28d5f1b1afb5e9a4a87b13c0f54f39da135fc525691e09413108fb7bf0cd7e31),
+[session float return](https://explorer.testnet.arc.io/tx/0x684584e297a1c8fd83acf71e91b91d6271846c99758882f48db918ba64d949f9).
+Only **0.011754975 extra USDC** was funded from the deployer in this pass; funding gas was **0.000525 USDC**,
+so gross extra deployer cost was **0.012279975 USDC**:
+[top-up](https://explorer.testnet.arc.io/tx/0x74d0e0b74148a502d931e92e4fee7e7afe69c05d6eedcae8932d567734356a17).
+
+Verification continuation: **PASS**, including the actual Transfer, both leaderboards, no horizontal overflow and no
+uncaught browser errors. Full proof, play/checkpoint transaction links and returned-fund receipts:
+[two-players-proof.json](screens/testnet/two-players-proof.json). The two player sweeps returned **1.970146525 USDC**
+to the deployer. Unit checks passed (8 server entries + 7 app tests), existing journal/locking checks 5/5, typecheck,
+build and lint passed with existing warnings; Mongo materialization confirmed 2 live settlements / 4 standings.
+
+**Scope:** local frontend and relay against live Arc testnet. No hosting resources created, no mainnet broadcasts,
+no new contract deployment. Testnet feed mirrors, passkeys and remote-chain integrations retain their prior limitations.
+The earlier reports below are historical and do not describe the current browser acceptance status.
+
+---
+
 # Live Arc testnet end to end
 
 Run on **2026-10-13** against the real Arc testnet deployment (`deployments/arc-testnet.json`, chain 5042002): real

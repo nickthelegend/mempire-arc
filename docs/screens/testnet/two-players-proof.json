@@ -1,0 +1,461 @@
+{
+  "at": "2026-10-14T14:34:23.127Z",
+  "chainId": 5042002,
+  "matchId": 3,
+  "verificationOnly": true,
+  "players": [
+    "0x86bC6fFef9e591a3079CE3F8180a14553a2785C3",
+    "0xC197b197f53989AbFEd867BA60505F10F8199942"
+  ],
+  "onchainPlays": [
+    25,
+    19
+  ],
+  "receipts": [
+    {
+      "kind": "MatchCreated",
+      "hash": "0xc10d9e9de311fdec3ed9b087e506142cb701fcc69f11c891dcd4e6c82ff6a3f7"
+    },
+    {
+      "kind": "MatchJoined",
+      "hash": "0xbc7644e85a685ed4007100a628235290e2b337ad64027e8b1b0e664cba93f41d"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x0d0ce2528647261522eba7aedfbbaa731f3d6fa0b795519b4f7f8fc562142b97"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x7fc9342618ea05cf767457bf523789e587d3e8e5c08948b4a03faaa5047eb106"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xbe9f6f9f672ca3197a8830fac40c978f4110e0bd4b056caa01b50d2c26221a9e"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x38d9244a0b7cc4446a3cf7b455fa44b521ce7303e8d2a186b104b7949c34fd2f"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xd051335f532e78304aa9faacfd4ca5d9b4f70d77e12ba8e16352c5b9d703cd31"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x700437b3d99343fa7b7662d0f26a353129cf037cc33cf2e4953025fb6cd0a63f"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xdcf649155203abda1eae8765d54217be6a02b37f84923eaeb168e22849154713"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x67bcbe4de84e5c4967edebde26c44274fbde4bb009d1eb7766f7cdf964719e78"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xc2fc74931365772b6036c1c7fd6cefa6fd10bfb17bee0c6bd13c9bbd13830f2a"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x7e534b852b24ab7e932de091dfbbe1f9f2b0b8e07cbd5b342dcc0949ba3eb44b"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x7198b2677061b88cf56a36a0054958289d3e793dfa9bf41b505de5cfeb0e1f38"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x1fd80a17e600892bc8f4ebcfc84c246b507d0f7424f3e04082df55aa9174ceb6"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xa381cc50f05f5aac691d834d94e1b970341b23334e61101c0f89245fce34009d"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x8bffab11fa2118a9d7d3e9e8d2ca346f2ecfa12e610ee794fef00d06132669e4"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x614db04c6a5e9f33403023133c702555ae0a897a7a3f61ff6ca013fcb2fc1654"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x93043f4386b873af4d76d3f23b43bfe06058f4096bbeec12ca82876ca17832f4"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x4f72d3c2c4bae09d6eca600fb860cd51ce990b03ec4d4229c00dcd2c6bd0df9d"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x7b9d7545b90291be8884fedced1a1710c236eb43d4d537f6ee1c0b3c0eec07fb"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xb09a0b3e8ef6561600d402330d0723330686066fbc193b1e930852bcacb19257"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xb2c6b13dbb09e269ec19ec29ff94c981ee7c084b3915b00656bba11e5739f5c7"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xbd999e0935a6972a5afd92bdacc1e606d09994f882bf1efdd40962a410df7469"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x124674057b1afc1993367f2a3f1883a61097c98414b9358b5c68ff50b827cbaf"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xce8e5a8a7bf6c74188afc69e74cb132c8a878ba61d412747e1e3e356527a29e5"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x9e9dd3061545721be802a9d54b9d2fe58f8f99b2ef923dc3e64a58b3656ebec4"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x58c1051182876e82d4dca0b51829331c6e8a9c20f0bf2ea75411e9aa5b6e8d7d"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x9e8a49e589b62799725a1223aeaa62674b9d1c516744a46dbaf7ed369f0ec83b"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xac2834d58b9d839adb44e9a3a0026abfbeaa779555899a67263b43574c0834fd"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x0662780ff92b6710113f92acb0828d92aad5581e0df3ff6e7c68474869498e1a"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xa254a856d21b611de6744d826d200d2e63dba7add655dae70042a6e5722eda2c"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xac4109054f41b8b8b61c758ca446bc33559b3e7aa3f8a019e8a6228f6b56e91c"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x7205ada2cf5940b489a01194b8d24f1654df71a2445932f1c84203228b2e2d79"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x9c47760149d8f28fe42ff16f651551bf069c7cb915deccc3646b11844bbda4ee"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x47a7b4aaa5857418e7e9a07da78b995289777591895bbbb4d67162cedda460a6"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x2c63c13cf877fb9bf4bf99bd1ee1af5f99133573a513b5f5691533ead6398ecc"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x4eb24f7b15b27262b5952d685a842c7f6bcec5534c3603dc5efdda0155898d30"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x242415bde7c51530b8d2b8f8b12d4c09840bc98678cc809b75be72ee49b30173"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xf2aa6d6d07fbab5b6164b34277243f18333a159ae30ff1fb7c73385acb2819a8"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xa4dcfef240636d5821ab09546626a981ce1b40e005dd2a1789829e7cc6b014e8"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xd28e0b611b044399e1b32509d7aad34be765ab6121f35bfd1aef42ff9ee68995"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x867b22ab388bfee5989634bd865ca8c86bb0bddf657bca0301537bc3e4442e86"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xa35ba8ac01b027559786096f9f80dbb7a9eb936cc2907348ba0865c8437b17fa"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xd12721c42a90812ae2de333bf7c38f830268d0a03e7083992b0a7a96ddc37a6d"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x271972bad04f1cfc9256f127708feb64635e40e46f9abefdcced88ab4b344730"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x49532bcd0ef3fceea0428c9114d8ec84deed5f962d1ebf18d1509c57cce03b83"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x699aac7cd26e87527939a5269673f9f2418612d511c6e6bc8788d6ee7035572d"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x5316f039166ea91efa63960f9c594568d8a1097f4077c4d2398f01333fa5048a"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x98c481e588dbb166508ff4083bb772a94c8494b3bb0329425ef661b695e2b3c9"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x59a573e1946be79ec48c90e5164c2f20956290bce3601fec0e63edafa4befa03"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x0cf9fbaf02fa28b8261abb1f86b289f04ddc923ea9270a56419420964f2a7d04"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xca86e60b0b5aed6654bbfd30c839930c9ccf73ec2c1169f1a691fab5208e2f3e"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xf2ea6f660075d21862fa36f2de706b60f643a850c467205b97ef05d88af1e937"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x1214bbb56b1cd02514a813eb0fec91b9d839b7bdaa6f7b3774906cf71555c601"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x66945c529b816d7548ace900d0cf40556978b4bd59f070e6a3e7106597d7b51c"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x5aed97b747d9f894da334540990715d8071e0e662780b72ee7bfa14dc070056d"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x2db11ee586b8ea45ba4526f8ed02d35853b969cd519b7a9b38f4d2c08a9cca7a"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x847b76f7063550d43f839155185459cab8481527dda3a2fa6dd0e473855b6ede"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x99f866a6e947359f4b625f53f1924cf90c6b9b1b7e9de2617d6321c6e6ba5516"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x5eab2b226b2a26b975532656db644bf8880e483e2f3a997ec26d906b448e239b"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xba3b1c832be6a0a26f9b1d59e1508aba4ce109bfe9acacdd95ddfc1c032a1b86"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x74fbbcd9ac4e47632b9bd6e439fc9986029619a4cf73e4918ba23988ff76a65b"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x02a293a5c50116df185ef775b02e6239c7b773bc34417a5b125113189846b534"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xada658a3470fa4399f94a60fe0da9b0665100145f26c3fc11b35f69d447c1e94"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x4a10518bcb35c2d3a814737d10797c33bf389c90453302085838709060e71bc5"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x1ecf803d02ea4cf76b40fef5f5d00a5f447b60a23dfedf95c5bcec0f7802e771"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x0c7126d3667e502561e473d1b2f5a68f0882dbbad05a41c414898321222c4b68"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x1d55dd0d18b20a8fb90c8177cad421a7feca5cc794694b1469ef9ba0eede8d22"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x4c11ba659cf062c17af7ef4e8b0765cb058156caa2a0a11208ef82f88d52944b"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x15104f2fcc42575033f518f004a7c4ad1b77a06dcf5c1f7bdce841c63d4817c5"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xcaabee78edaf924022c38cb3aa128b609a1eef8a3253d0b7252acd3353abc791"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x34d5ed6aa85badee43b19efe9a823c5b753f63c01cf70ff9c609dc28e65c2a24"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x8409a36fe67a3939c08398ba090ee800001656772032a26c22f7e0961d3c492e"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x55e43d60927e2a9efdffe8787eee922d87e1362d08204113873aaa4e9b40e496"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xb7eb373c8287ecd1b40d1eadb6eb106e855f6d9b2598eb3657bb532a2ebb2cca"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x95ab9314e25b6a4897da160fe66e119df071cc37f00914ef7927bff28d73fff5"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xd8c77da133301c0f2563a514813a0eabeaa990a4a858f8e01c82c05f4cd20af2"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x95d9845ef777ea282cb794c510ddc11106abffe8c03add9dc2720d8681b824b1"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x5648e7d9f37a25bed79bd3bb042eb40e838fcfd28215bf1d8ce8dc51d6d0faa3"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x1b4f6a24555b0c76a68bb2920eeb6249a1d9a90701505a11d9a13403a97ecb9a"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x190b9726703ee53842e17461b9a8c4d6d3b7a7f2ee7c45e7dfddcaf9cf13139f"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x37d16ad3e71a64f41952de6a251b629cf8424f860897eb2231ddde24c349c7b4"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x3ba3868341d132f01d76c6aaee30c9f5a13e5cf55174700a3aec41187af2003c"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x7484ec879f8909bf961e59c03e457aa6f72e6dc7f9b6e7584b2c3df7d3b3327f"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xc7e613f83b23b663f5b619296e17b2833aac93abbf5a3f64e8dd8c09be5e0b45"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xa6cb365c72041a4af7b21c3ee7b68a242265e1d720f1c81a2a5f5f967da3d916"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0x424a3e22fea3dd5d55234dc0fa8fe8eafc28bbd935f2de24853ba03331d1b91e"
+    },
+    {
+      "kind": "Checkpoint",
+      "hash": "0xcc2f99cfade4f77525e590587328eaf3148841b26a38538dc7f47b2835d47fe2"
+    },
+    {
+      "kind": "Played",
+      "hash": "0xc821622bf3fe340639003a78e6123ad8bff9c8f674fd30324dc32254b8684094"
+    },
+    {
+      "kind": "Played",
+      "hash": "0x4c3701446e8d2866f1232d83e7bfe78f3b13b04659178572fb536bc1293e9331"
+    },
+    {
+      "kind": "Claimed",
+      "hash": "0xe0b63689bbb39437fcd531358fe75b59784d65e4bcf8c2dbe235d8cac797bf3e"
+    },
+    {
+      "kind": "Claimed",
+      "hash": "0x94504dc3b9eb8c136678c200bfd536612b9a2d345b6e6b760cfb6796adda1107"
+    },
+    {
+      "kind": "MatchSettled",
+      "hash": "0x94504dc3b9eb8c136678c200bfd536612b9a2d345b6e6b760cfb6796adda1107"
+    },
+    {
+      "kind": "WinRewarded",
+      "hash": "0x94504dc3b9eb8c136678c200bfd536612b9a2d345b6e6b760cfb6796adda1107"
+    }
+  ],
+  "leaderboard": [
+    {
+      "address": "0x86bc6ffef9e591a3079ce3f8180a14553a2785c3",
+      "wins": 1,
+      "losses": 0,
+      "matches": 1,
+      "crowns": 0,
+      "netUsdc": 0.8
+    },
+    {
+      "address": "0xcf376fa07a5d4dbf1e8b91c2c6207f3343398be8",
+      "wins": 1,
+      "losses": 0,
+      "matches": 1,
+      "crowns": 0,
+      "netUsdc": 0.8
+    },
+    {
+      "address": "0xc197b197f53989abfed867ba60505f10f8199942",
+      "wins": 0,
+      "losses": 1,
+      "matches": 1,
+      "crowns": 0,
+      "netUsdc": -1
+    },
+    {
+      "address": "0x6c8fa3f9866798e506663729ad443d89c0813a2d",
+      "wins": 0,
+      "losses": 1,
+      "matches": 1,
+      "crowns": 0,
+      "netUsdc": -1
+    }
+  ],
+  "winner": "0x86bC6fFef9e591a3079CE3F8180a14553a2785C3",
+  "payout": "1.80",
+  "source": "Existing settled match verified on chain and in both browser leaderboards after the original gameplay run hit a log-indexing race.",
+  "funding": {
+    "hash": "0x74d0e0b74148a502d931e92e4fee7e7afe69c05d6eedcae8932d567734356a17",
+    "usdc": "0.011754975",
+    "gasUsdc": "0.000525"
+  },
+  "cancelledUnusedMatch": "0x060cc423f69fc39d244b845f4213560f09fb329210e9b04e515534e693b919a6",
+  "returned": [
+    {
+      "hash": "0x1926c7b933b971b9be59e5cb9aab0492992a42357468a24091a4c85ff6289947",
+      "from": "0xf4db4acf92d6013bae552c6ac8f279b9aa8f632a",
+      "to": "0x86bc6ffef9e591a3079ce3f8180a14553a2785c3",
+      "usdc": "0.04845525"
+    },
+    {
+      "hash": "0x311ff1d4d78a5751c25b0213f78fcba173c71de25b6a114edc87884d181282b0",
+      "from": "0x86bc6ffef9e591a3079ce3f8180a14553a2785c3",
+      "to": "0x0648adf1967692a0c991d7715b0b588452321fbd",
+      "usdc": "1.8783214"
+    },
+    {
+      "hash": "0xadcdc5b67802a23f98d9df8bc9f28f1f50063efe016c6968b0f824cbccdeaea3",
+      "from": "0x734d264594eaccb816f24ee4f8195d267efb9575",
+      "to": "0xc197b197f53989abfed867ba60505f10f8199942",
+      "usdc": "0.060268875"
+    },
+    {
+      "hash": "0x0f2f30a287e36c47094bd28e645e662ecad1065e84cb57615186fa2b5eb49a68",
+      "from": "0xc197b197f53989abfed867ba60505f10f8199942",
+      "to": "0x0648adf1967692a0c991d7715b0b588452321fbd",
+      "usdc": "0.091825125"
+    }
+  ]
+}

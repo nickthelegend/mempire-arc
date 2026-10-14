@@ -1,3 +1,40 @@
+# 2026-10-14 reassessment — real two-player browser match complete
+
+**Live (testnet): match #3.** Two isolated guest browsers, 1280px and 390px, completed a normal 180-second $1-per-seat
+match. All 44 UI card plays confirmed on chain (25/19, zero unlogged). Both application claims agreed; the contract
+transferred **$1.80** to the winner and **$0.20** rake. Both browser leaderboards show **+$0.80 / −$1 net**.
+[Receipts, commands and screenshots](E2E-TESTNET.md) · [Machine-readable chain/browser verification](screens/testnet/two-players-proof.json).
+
+| Criterion | Before | After | Evidence / limit |
+|---|---|---|---|
+| Relevance to Arc | 8 | 8 | USDC stakes, gas, 44 card drops and Memo-tagged stakes/claims verified live. No new integration added. |
+| Technical credibility | 7 | 9 | Real-time browser match, two matching claims, actual USDC Transfer and durable leaderboard verified. |
+| Build quality | 8 | 8 | Ranked automation, finality race and inconsistent funding threshold fixed; mobile battle exercised. Existing lint/chunk warnings remain. |
+| Worth taking further | 8 | 8 | Core multiplayer loop proven locally; hosted WebSocket operation and reconnect support remain open. |
+
+Root causes: Ranked's continuous animation defeated Playwright stability checks; the app rejected a mined call before
+its RPC finalized head caught up; Arena and matchmaking disagreed on gas headroom. The harness now uses reduced motion,
+normal clicks and the explicit $1 tier. The app polls finality without replaying calls and uses one $0.13 gas threshold.
+
+**Verification boundary:** gameplay and payout succeeded on the first complete match, but its harness stopped while
+looking for a not-yet-visible settlement log. The repaired event verifier then passed against **the same match #3**,
+including actual Transfer and both browser leaderboards. No replacement claim or second match was sent. A fresh
+single-command match after the final harness edit is **Not run**; the existing-match verification command passed.
+These were automated UI players, not two physical human testers. No bots, accelerated clock or injected game state.
+
+Checks: `npm test` passed (8 server entries, 7 app regressions); 5 existing journal/locking tests passed; typecheck,
+production build and lint passed (existing warnings). Mongo history check persisted 2 real settlements and 4 standings.
+Extra deployer cost **0.012279975 USDC including funding gas**, within the $1 cap. Unused match #2 was cancelled in the
+browser; remaining funds were swept back. All started servers/Chromium stopped. No mainnet broadcast or paid resource.
+
+Still weak: the current PvP room state needs one continuously running Node WebSocket relay for a public demo; this pass
+used it on demand locally and provisioned nothing. Vercel production deployment, passkeys, reconnect behavior and live
+CCIP/CCTP/Gateway/AI integrations remain unverified. Testnet prices are relayer-written mirrors, not native Chainlink feeds.
+
+---
+
+## Historical earlier 2026-10-14 reassessment (superseded above)
+
 # 2026-10-14 reassessment — improved, acceptance still incomplete
 
 The mandatory two-player real-time browser settlement is **not verified**. The managed sandbox blocks Chromium

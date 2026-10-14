@@ -13,8 +13,17 @@ export function saveCall(s:Store,p:DurableCall){const old=readCall(s,p.chainId,p
 export function clearCall(s:Store,p:DurableCall){const old=readCall(s,p.chainId,p.from);if(!old||JSON.stringify(old)!==JSON.stringify(readCall({getItem:()=>JSON.stringify(p),setItem(){},removeItem(){}},p.chainId,p.from)))throw Error('Original transaction identity changed.');s.removeItem(key(p.chainId,p.from));if(readCall(s,p.chainId,p.from))throw Error('Original transaction journal could not be cleared.');}
 async function recoverCallLocked(client:PublicClient,s:Store,chainId:number,from:Address):Promise<TransactionReceipt>{
  const p=readCall(s,chainId,from);if(!p)throw Error('No original transaction is saved.');if(!p.hash)throw Error('Original submission has no known hash. Genuine wallet/provider history is required; no new signature was requested.');if(await client.getChainId()!==p.chainId)throw Error('Receipt RPC network differs from the original transaction.');
- const [r,tx,final]=await Promise.all([client.getTransactionReceipt({hash:p.hash}),client.getTransaction({hash:p.hash}),client.getBlock({blockTag:'finalized'})]);
- if(r.transactionHash.toLowerCase()!==p.hash.toLowerCase()||tx.hash.toLowerCase()!==p.hash.toLowerCase()||tx.from.toLowerCase()!==p.from.toLowerCase()||r.from.toLowerCase()!==p.from.toLowerCase()||tx.to?.toLowerCase()!==p.to.toLowerCase()||r.to?.toLowerCase()!==p.to.toLowerCase()||keccak256(tx.input).toLowerCase()!==p.dataHash.toLowerCase()||tx.value!==BigInt(p.value)||tx.gas!==BigInt(p.gas)||tx.nonce!==p.nonce||(p.maxFeePerGas!==undefined&&tx.maxFeePerGas!==BigInt(p.maxFeePerGas))||(p.maxPriorityFeePerGas!==undefined&&tx.maxPriorityFeePerGas!==BigInt(p.maxPriorityFeePerGas))||tx.blockHash!==r.blockHash||final.number===null||final.number<r.blockNumber)throw Error('Original transaction has no exact canonical finalized call proof.');
+ const [r,tx]=await Promise.all([client.getTransactionReceipt({hash:p.hash}),client.getTransaction({hash:p.hash})]);
+ if(r.transactionHash.toLowerCase()!==p.hash.toLowerCase()||tx.hash.toLowerCase()!==p.hash.toLowerCase()||tx.from.toLowerCase()!==p.from.toLowerCase()||r.from.toLowerCase()!==p.from.toLowerCase()||tx.to?.toLowerCase()!==p.to.toLowerCase()||r.to?.toLowerCase()!==p.to.toLowerCase()||keccak256(tx.input).toLowerCase()!==p.dataHash.toLowerCase()||tx.value!==BigInt(p.value)||tx.gas!==BigInt(p.gas)||tx.nonce!==p.nonce||(p.maxFeePerGas!==undefined&&tx.maxFeePerGas!==BigInt(p.maxFeePerGas))||(p.maxPriorityFeePerGas!==undefined&&tx.maxPriorityFeePerGas!==BigInt(p.maxPriorityFeePerGas))||tx.blockHash!==r.blockHash)throw Error('Original transaction has no exact canonical finalized call proof.');
+ // A mined receipt can arrive before this RPC's finalized head advances.
+ // Keep the original journal/lock and poll finality; never resubmit the call.
+ let finalized = false;
+ for (let attempt = 0; attempt < 20; attempt++) {
+  const head = await client.getBlock({blockTag:'finalized'});
+  if (head.number !== null && head.number >= r.blockNumber) { finalized = true; break; }
+  await new Promise(resolve => setTimeout(resolve, 500));
+ }
+ if (!finalized) throw Error('Original transaction is mined but finality is still pending. Check its receipt before any new submission.');
  const canonical=await client.getBlock({blockNumber:r.blockNumber});if(canonical.hash!==r.blockHash)throw Error('Original receipt block is not canonical.');
  if(r.status!=='success'&&r.status!=='reverted')throw Error('Original transaction status is unknown.');clearCall(s,p);if(r.status==='reverted')throw Error(`Original transaction reverted: ${p.hash}`);return r;
 }

@@ -15,7 +15,7 @@ Frontend target: Vercel; revised build not deployed in this pass. PvP requires a
 
 Mempire turns the market into a card game on Arc. Every fighter — BTC, LINK, gold, the euro — is
 priced from its Chainlink Data Feed (testnet: on-chain mirrors of the mainnet feeds), and each fighter's 24-hour move is computed on chain into a small buff or
-nerf. Two players stake a dollar of USDC, play a three-minute lane battle where every card drop is a sub-second Arc
+nerf. Two players stake a dollar of USDC, play a three-minute lane battle where every card drop is an Arc
 transaction from a per-match session key, and the arena pays the winner in the block both results land. Players
 hold one token: USDC is the stake and the gas. Sign-in is a passkey. USDC on Base, Ethereum or Arbitrum works
 too: Circle Gateway tops you up on Arc in a second, and from Base one transaction moves the dollar with CCTP while
@@ -29,7 +29,7 @@ opponent has an ERC-8004 identity.
 - **Chainlink Data Feeds on Arc** — every fighter's price, read in the mint; the daily meta computed on chain from feed history. Mainnet reads Chainlink's feeds (fork-verified); the live testnet deployment reads relayer-written mirrors of them, a testnet-only trust assumption.
 - **Chainlink CCIP + Circle CCTP V2** — enter or cash out from Base/Ethereum; defensive receiver on Arc. (Fork + Chainlink Local only; never run live.)
 - **Circle Gateway** — unified USDC balance; balances read live from Circle's API, the Arc mint was never run live.
-- **Arc Memo** — stakes and payouts tagged with the match id (fork-verified; the live testnet e2e used plain calls).
+- **Arc Memo** — stakes and payouts tagged with the match id (verified live in browser match #3; earlier match #1 used plain calls).
 - **ERC-8004** — the AI opponent's identity and player-written reputation (fork-verified; the agent is not registered on testnet yet).
 - **USDC permits (EIP-2612)** — stake + gas float in one transaction.
 
@@ -49,6 +49,11 @@ Locally, all of this runs on a fork of Arc mainnet: `./scripts/local-up.sh` (see
 
 ## Honest status
 
+- **Live browser match #3 (2026-10-14):** two isolated Chromium guests played 180 seconds through UI clicks, logged all
+  44 card plays and submitted matching claims. The winner received $1.80; both browser leaderboards show +$0.80 / −$1
+  net. Stakes and claims went through Arc Memo. The harness's event-indexing check needed a verification continuation
+  against the same settled match; no replacement claim was sent. Receipts and screenshots: [E2E-TESTNET.md](docs/E2E-TESTNET.md).
+
 - **Live on Arc testnet** (2026-10-13): contracts deployed (31 txs); two wallets onboarded through the relay, a card minted at the
   feed price, the daily meta posted from the feeds on chain, and a $1 staked match paired by the relay, escrowed, played
   (16 card drops on chain), settled and paid ($1.80 to the winner, $0.20 rake). Links: `docs/E2E-TESTNET.md`.
@@ -57,7 +62,7 @@ Locally, all of this runs on a fork of Arc mainnet: `./scripts/local-up.sh` (see
   gas-reserve failure (details in the E2E doc).
 - Testnet prices are mirrors of Arc-mainnet Chainlink rounds written by our relayer (Chainlink feeds are mainnet-only),
   seeded sparsely: the relay must keep running to keep them fresh, and the keeper can post a new meta only after 24 h of mirror history.
-- Not run live: CCIP/CCTP entry from Base, Gateway top-up mint, Memo tags, the ERC-8004 rating, CRE, the Envio indexer, passkey (WebAuthn PRF) ceremony.
+- Not run live: CCIP/CCTP entry from Base, Gateway top-up mint, the ERC-8004 rating, CRE, the Envio indexer, passkey (WebAuthn PRF) ceremony.
 - Verified on local forks of Arc and Base mainnet (real USDC, Chainlink feeds, CCIP router, CCTP, Gateway, Memo,
   ERC-8004) and against Circle's live Gateway API.
 - The AI opponent is LLM-planned only when the relay has `MOONSHOT_API_KEY`; otherwise the app offers the classic bot.

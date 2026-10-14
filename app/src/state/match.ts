@@ -24,6 +24,7 @@ import type { ChestTier } from './economy';
 import { warmBattleChunk, warmMatchArt } from '../lib/warm';
 import { useDeck, stakeOf, type StakeCurrency } from './deck';
 import { canSign } from '../chain/account';
+import { STAKE_USDC_NEEDED } from '../chain/session';
 import { fetchDeckCards, fetchModifiers } from '../chain/read';
 import { useChain } from './chain';
 import { useEscrow } from './escrow';
@@ -168,11 +169,10 @@ function currentMeta(): Map<number, number> {
  * stale read can only fail the escrow, which plays the match unstaked and
  * says so; it can never take money that is not there.
  */
-const GAS_HEADROOM_USDC = 0.13;
 function canAffordStake(stake: number, _currency: StakeCurrency): boolean {
   // One balance on Arc: the stake, the session float and the gas all come out of USDC.
   const { usdc } = useWallet.getState();
-  return usdc >= stake + GAS_HEADROOM_USDC;
+  return usdc >= stake + STAKE_USDC_NEEDED;
 }
 
 /**
