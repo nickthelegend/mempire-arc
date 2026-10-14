@@ -1,0 +1,10 @@
+{
+  "name": "mempire-arc", "private": true, "type": "module",
+  "scripts": {
+    "build": "npm --prefix app run build",
+    "typecheck": "npm --prefix app run typecheck",
+    "test": "npm --prefix server run test:unit",
+    "e2e:two-players": "node --env-file=server/.env.local scripts/e2e-two-players.mjs"
+  },
+  "engines": {"node": ">=24"}
+}

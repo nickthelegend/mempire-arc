@@ -212,7 +212,7 @@ function OpenCeremony({
                   }}
                 >
                   <img
-                    src={`/art/card_${t.toLowerCase()}.webp`}
+                    src={`/art/card_${t.toLowerCase()}.${['BCH','HYPE','AAVE','PAXG','EUR','JPY','AUD','CAD','MXN','BRL','KRW'].includes(t) ? 'svg' : 'webp'}`}
                     alt={`$${t}`}
                     width={84}
                     height={84}

@@ -499,7 +499,7 @@ export function Arena() {
                 </span>
                 <span className="fine" style={{ color: 'var(--dim-on-wood)', fontSize: 12 }}>
                   {match.status === 'found'
-                    ? `${match.opponentName} · entering arena`
+                    ? `${match.opponentName} · securing both stakes`
                     : match.ranked
                       // The wait is bounded now — after twenty seconds the AI
                       // steps in — so the copy promises an end rather than an

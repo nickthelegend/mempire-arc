@@ -30,7 +30,7 @@ interface Step { title: string; body: string; done: (s: SimState, me: 0 | 1, ctx
 const STEPS: Step[] = [
   {
     title: 'Drop a fighter',
-    body: 'Drag a card from your hand onto your half of the arena — anywhere below the river.',
+    body: 'Tap a card, then tap below the river to deploy it. You can also drag it onto your half.',
     done: (_s, _me, ctx) => ctx.deploys >= 1,
   },
   {
@@ -51,7 +51,7 @@ const STEPS: Step[] = [
 ];
 
 export function Coach() {
-  const practice = useMatch((s) => s.practice);
+  const playing = useMatch((s) => s.status === 'battle');
   const perspective = useMatch((s) => s.perspective);
   const [active, setActive] = useState(() => !coachDone());
   const [step, setStep] = useState(0);
@@ -59,7 +59,7 @@ export function Coach() {
   const lastElixir = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!practice || !active || step >= STEPS.length) return;
+    if (!playing || !active || step >= STEPS.length) return;
     const iv = setInterval(() => {
       const sim = useMatch.getState().sim;
       if (!sim) return;
@@ -70,9 +70,9 @@ export function Coach() {
       if (STEPS[step].done(sim, perspective, { deploys: deploys.current })) setStep((n) => n + 1);
     }, 150);
     return () => clearInterval(iv);
-  }, [practice, active, step, perspective]);
+  }, [playing, active, step, perspective]);
 
-  if (!practice || !active) return null;
+  if (!playing || !active) return null;
   const finished = step >= STEPS.length;
   const s = STEPS[Math.min(step, STEPS.length - 1)];
   const close = () => { markDone(); setActive(false); };
@@ -96,7 +96,7 @@ export function Coach() {
       </div>
       <p className="fine" style={{ margin: 0, fontSize: 13, color: 'var(--dim-on-wood)' }}>
         {finished
-          ? 'That is the whole game. Finish this practice, then stake a dollar of USDC in Ranked — the contract pays the winner.'
+          ? 'Keep pushing your lane. Destroy towers for crowns; protect your king to stay in the fight.'
           : s.body}
       </p>
       <div style={{ display: 'flex', gap: 8 }}>

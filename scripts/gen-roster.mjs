@@ -54,7 +54,7 @@ const AGE = { crypto: 26 * 3600, defi: 26 * 3600, rwa: 4 * 86400 };
 const src = process.argv[2] ?? '/private/tmp/claude-501/-Volumes-Extreme-SSD-Projects-arc/bc4eb9da-5e94-4401-9bc1-84adcfe8acf7/scratchpad/feeds-arc-mainnet.json';
 const feeds = JSON.parse(readFileSync(src, 'utf8'));
 const byName = new Map(feeds.map((f) => [f.name, f]));
-const art = (t) => existsSync(new URL(`../app/public/art/card_${t.toLowerCase()}.webp`, import.meta.url));
+const art = (t) => existsSync(new URL(`../app/public/art/card_${t.toLowerCase()}.svg`, import.meta.url)) || existsSync(new URL(`../app/public/art/card_${t.toLowerCase()}.webp`, import.meta.url));
 
 const coins = FIGHTERS.map(([ticker, pair, name, kind, coingeckoId, hue], coinId) => {
   const f = byName.get(pair);

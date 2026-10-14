@@ -1,0 +1,10 @@
+{
+  "installCommand": "npm ci --prefix app && npm ci --prefix server",
+  "buildCommand": "npm run build",
+  "outputDirectory": "app/dist",
+  "rewrites": [
+    {"source": "/api/:path*", "destination": "/api"},
+    {"source": "/((?!api/|art/|assets/|chars/|sfx/|nft/).*)", "destination": "/index.html"}
+  ],
+  "functions": {"api/index.mjs": {"maxDuration": 60, "includeFiles": "{server/shared/**,shared/**}"}}
+}

@@ -295,7 +295,7 @@ export function registerMatchmaker(server, db) {
           const format = msg.format === 'rush' ? 'rush' : 'standard';
           const ranked = Boolean(msg.ranked);
           const trophies = Number.isFinite(Number(msg.trophies)) ? Number(msg.trophies) : 0;
-          const key = queueKey(tier, currency, format, ranked);
+          const key = `${queueKey(tier, currency, format, ranked)}:${msg.staked ? 'escrow' : 'rating'}`;
           const list = queues.get(key) ?? [];
           const now = Date.now();
 
@@ -523,8 +523,24 @@ export function registerMatchmaker(server, db) {
           const m = matches.get(ws.matchId);
           if (!m || m.done) return;
           const stage = String(msg.stage ?? '');
-          if (!['opened', 'joined', 'failed'].includes(stage)) return;
+          if (!['opened', 'joined', 'ready', 'failed'].includes(stage)) return;
           const id = Number(msg.onchainMatchId);
+          if (stage === 'ready') {
+            if (!Number.isSafeInteger(id) || id <= 0 || m.started || m.checkingStart) return;
+            m.ready ??= new Map();
+            m.ready.set(ws, id);
+            if (m.ready.size !== 2 || new Set(m.ready.values()).size !== 1) return;
+            m.checkingStart = true;
+            try {
+              const locked = await publicClient().readContract({address:deployment.arena, abi:abis.arena, functionName:'getMatch', args:[BigInt(id)]});
+              if (Number(locked.state) !== 2 || normAddress(locked.p0) !== normAddress(m.addr[0]) || normAddress(locked.p1) !== normAddress(m.addr[1])) return;
+              m.started = true;
+              const now = Date.now();
+              for (const player of m.players) send(player, {t:'start', startAt:now+1500, serverNow:now});
+            } catch { /* client can repeat readiness; never start an unverified stake */ }
+            finally { m.checkingStart = false; }
+            return;
+          }
           const txHash = typeof msg.txHash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(msg.txHash)
             ? msg.txHash : null;
           send(opponentOf(m, ws), {

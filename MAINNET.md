@@ -56,16 +56,16 @@ and the indexer's `config.mainnet.yaml` after the deploy.
 
 ## 3. Host
 
-### Relay (Railway)
+### Relay (separate always-on server; do not provision without a hosting decision)
 
-One instance (the matchmaker is in-process). `server/railway.json` + `server/Dockerfile`, root directory `server/`.
+One instance (the matchmaker is in-process). `server/Dockerfile`, root directory `server/`. Frontend and ordinary HTTP routes belong on Vercel; see [the hosting boundary](docs/HOSTING.md). No paid relay is authorized by this runbook.
 
 | Variable | Value |
 |---|---|
 | `CHAIN_ID` | `5042` |
 | `RPC_URL` | `https://rpc.mainnet.arc.io` (or a provider RPC) |
 | `RELAYER_PRIVATE_KEY` | the relayer key (secret) |
-| `MONGODB_URI`, `MONGODB_DB` | Atlas URI (secret), `mempire` |
+| `MONGODB_URI`, `MONGODB_DB` | Atlas URI (secret), `mempire_arc` |
 | `CORS_ORIGIN` | the Vercel app origin |
 | `PUBLIC_APP_URL` / `PUBLIC_API_URL` | app origin / this relay's origin |
 | `ONBOARD_MAINNET_MIN_USDC` | `1` |

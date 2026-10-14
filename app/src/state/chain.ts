@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  fetchCardsFor, fetchChests, fetchConfig, fetchMarketMeta, fetchUsdcBalance, fetchRegisteredCoins,
+  fetchFeedPrices, fetchCardsFor, fetchChests, fetchConfig, fetchMarketMeta, fetchUsdcBalance, fetchRegisteredCoins,
   fetchTokenBalances, type ChainCard, type ChainChest, type ChainCoin, type ChainConfig,
 } from '../chain/read';
 import { canSign } from '../chain/account';
@@ -58,13 +58,17 @@ let marketTimer: ReturnType<typeof setInterval> | null = null;
 export const useChain = create<ChainState>((set, get) => {
   const pullMarket = async () => {
     let changed = false;
+    let havePrices = false;
     if (hasApi()) {
       try {
         const res = await apiFetch('/api/coins');
         const body = res && res.ok ? await res.json() : null;
         const rows = Array.isArray(body) ? body : Array.isArray(body?.coins) ? body.coins : null;
-        if (rows) changed = overlayLivePrices(rows) || changed;
+        if (rows) { havePrices = rows.length > 0; changed = overlayLivePrices(rows) || changed; }
       } catch { /* stale prices beat no app; the next tick retries */ }
+    }
+    if (!havePrices) {
+      try { changed = overlayLivePrices(await fetchFeedPrices()) || changed; } catch { /* show unavailable prices */ }
     }
     try {
       const { epoch, bps } = await fetchMarketMeta();

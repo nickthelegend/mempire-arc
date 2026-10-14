@@ -12,7 +12,7 @@ import { click, play } from '../lib/audio';
 import { useChain } from '../state/chain';
 import {
   ASSET_KINDS, COINS, ineligibleReason, tickerOf,
-  type AssetKind, type Coin,
+  archetypeForFeed, type AssetKind, type Coin,
 } from '../lib/coins';
 import { fmtUsdc, fmtUsd } from '../lib/format';
 import { EASE_SNAP, usePulse } from '../lib/motion';
@@ -350,20 +350,18 @@ export function Cards() {
   const levelled = cards.filter((c) => !c.seeded && c.level > 1).length;
 
   if (!connected) {
-    return (
-      <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', gap: 16, padding: 30, textAlign: 'center',
-      }}
-      >
-        <h1 className="display" style={{ fontSize: 30 }}>Cards</h1>
-        <p style={{ color: 'var(--dim)', fontSize: 14 }}>
-          Connect a wallet to mint fighters you keep. Minting costs a small fee
-          and never touches the coins in your wallet.
-        </p>
-        <Pill onClick={openPicker} style={{ maxWidth: 260 }}>Connect Wallet</Pill>
+    return <div style={{padding:'18px 16px', display:'grid', gap:20}}>
+      <header><h1 className="display" style={{fontSize:30}}>Meet your fighters</h1>
+        <p className="fine">Twenty assets. Twenty characters. Pick your favourites before your first match.</p></header>
+      <Pill onClick={openPicker}>Play your first match</Pill>
+      <p className="fine">{MIRROR_NOTE} Browsing is free; signing in is only needed to collect and play.</p>
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:'18px 10px'}}>
+        {COINS.map(coin => <div key={coin.mint}>
+          <CardFrame fluid width={110} card={{id:`catalogue-${coin.coinId}`, mint:coin.mint, level:1, archetype:archetypeForFeed(coin.feedId) as 0|1|2|3|4|5}} />
+          <p className="fine" style={{textAlign:'center',marginTop:8}}>{coin.name}</p>
+        </div>)}
       </div>
-    );
+    </div>;
   }
 
   return (

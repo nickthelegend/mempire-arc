@@ -1,0 +1,76 @@
+{
+  "at": "2026-10-14T11:33:04.746Z",
+  "scope": "Cold visitor, built frontend, live testnet reads; no browser match",
+  "screens": [
+    {
+      "width": 390,
+      "route": "Arena",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 390,
+      "route": "Cards",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 390,
+      "route": "Deck",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 390,
+      "route": "Clan",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 390,
+      "route": "Empire",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 1280,
+      "route": "Arena",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 1280,
+      "route": "Cards",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 1280,
+      "route": "Deck",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 1280,
+      "route": "Clan",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    },
+    {
+      "width": 1280,
+      "route": "Empire",
+      "broken": [],
+      "overflow": false,
+      "title": "Mempire — the market is the meta"
+    }
+  ]
+}

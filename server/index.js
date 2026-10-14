@@ -23,7 +23,7 @@ import { createMemoryDb } from './memstore.js';
 import { registerMarketRoutes } from './market.js';
 import { registerGatewayRoutes } from './gateway.js';
 import { registerAgentRoutes } from './agent.js';
-import { registerRecentRoutes } from './recent.js';
+import { registerRecentRoutes, setHistoryDb, recentMatches, settlementBoard } from './recent.js';
 import { registerAiRoutes } from './ai.js';
 import { registerNftRoutes } from './nft.js';
 import { registerOnboardRoutes } from './onboard.js';
@@ -35,7 +35,7 @@ import { errorRecorder, rateLimiter, registerOpsRoutes, walletLimiter } from './
 import { applyMatch, leagueFor } from './ranking.js';
 import { registerMatchmaker } from './matchmaker.js';
 
-const { MONGODB_URI, MONGODB_DB = 'mempire', PORT = 8787 } = process.env;
+const { MONGODB_URI, MONGODB_DB = 'mempire_arc', PORT = 8787 } = process.env;
 
 /*
  * Mongo when configured, process memory when not.
@@ -64,6 +64,8 @@ let pairings;
  * the server is listening, which is after that assignment.
  */
 let db;
+let persistent = false;
+setHistoryDb(() => persistent ? db : null);
 
 const app = express();
 // The host terminates TLS at its edge proxy, so without this req.ip is the proxy
@@ -73,6 +75,12 @@ const app = express();
 app.set('trust proxy', 1);
 // Locked to the deployed app's origin in production; open in development.
 app.use(cors(process.env.CORS_ORIGIN ? { origin: process.env.CORS_ORIGIN.split(',') } : undefined));
+app.use('/api', (req, res, next) => {
+  if ((client || process.env.VERCEL) && !persistent && (req.method !== 'GET' || /^\/(clans|ladder)/.test(req.path))) {
+    return res.status(503).json({error:'Persistent storage is unavailable. Clan and ranking records cannot be read from chain. Try again when MongoDB reconnects.'});
+  }
+  next();
+});
 app.use(express.json({ limit: '256kb' }));
 
 /*
@@ -170,7 +178,7 @@ app.get('/api/health', async (_req, res) => {
     mirror: mirrorStatus(),
     ccip: ccipWatchStatus(),
   };
-  if (!client) return res.json({ ok: true, db: 'memory', persistent: false, chain });
+  if (!persistent) return res.json({ ok: true, db: 'memory', persistent: false, chain });
   try {
     await client.db(MONGODB_DB).command({ ping: 1 });
     res.json({ ok: true, db: MONGODB_DB, persistent: true, chain });
@@ -617,14 +625,8 @@ app.get('/api/leaderboard', async (req, res) => {
   const currency = String(req.query.currency ?? 'USDC').toUpperCase();
   if (!CURRENCIES.includes(currency)) return res.status(400).json({ error: 'currency must be USDC' });
   try {
-    const rows = await leaderboard
-      .find({}, { projection: { netUsdc: 1, wins: 1, losses: 1, crowns: 1, matches: 1 } })
-      .sort({ [NET_FIELD[currency]]: -1 })
-      .limit(25)
-      .toArray();
-    res.json(rows.map(({ _id, ...r }) => ({
-      address: _id, netUsdc: 0, wins: 0, losses: 0, crowns: 0, matches: 0, ...r,
-    })));
+    const rows = settlementBoard(await recentMatches());
+    res.json(rows.slice(0, 25));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -645,8 +647,14 @@ app.get('/api/leaderboard', async (req, res) => {
  */
 const server = await (async () => {
   if (client) {
-    await client.connect();
-    db = client.db(MONGODB_DB);
+    try {
+      await client.connect();
+      db = client.db(MONGODB_DB);
+      persistent = true;
+    } catch {
+      console.warn('Mongo unavailable; chain reads remain available. Persistent writes are disabled.');
+      db = createMemoryDb(MONGODB_DB);
+    }
   } else {
     db = createMemoryDb(MONGODB_DB);
   }
@@ -713,8 +721,9 @@ const server = await (async () => {
   // handler registered after everything that could throw.
   app.use(errorRecorder(db).middleware);
 
-  console.log(client ? `mongo connected → ${MONGODB_DB}` : 'store: in-memory');
+  console.log(persistent ? `mongo connected → ${MONGODB_DB}` : 'store: in-memory');
   console.log(`chain ${CHAIN_ID} via ${RPC_URL} · ${deployment ? 'deployment loaded' : 'no deployment for this chain'}`);
+  if (process.env.VERCEL) return null;
   const httpServer = app.listen(PORT, () => console.log(`mempire api on :${PORT}`));
   registerMatchmaker(httpServer, db);
   startKeeper();
@@ -734,8 +743,10 @@ const server = await (async () => {
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
-    server.close();
+    server?.close();
     await client?.close();
     process.exit(0);
   });
 }
+
+export default app;

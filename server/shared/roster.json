@@ -121,7 +121,7 @@
       "maxPriceAge": 93600,
       "coingeckoId": "bitcoin-cash",
       "hue": 130,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 8,
@@ -136,7 +136,7 @@
       "maxPriceAge": 93600,
       "coingeckoId": "hyperliquid",
       "hue": 165,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 9,
@@ -181,7 +181,7 @@
       "maxPriceAge": 93600,
       "coingeckoId": "aave",
       "hue": 270,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 12,
@@ -196,7 +196,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": "pax-gold",
       "hue": 45,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 13,
@@ -211,7 +211,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 215,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 14,
@@ -226,7 +226,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 350,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 15,
@@ -241,7 +241,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 140,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 16,
@@ -256,7 +256,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 5,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 17,
@@ -271,7 +271,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 120,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 18,
@@ -286,7 +286,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 95,
-      "hasArt": false
+      "hasArt": true
     },
     {
       "coinId": 19,
@@ -301,7 +301,7 @@
       "maxPriceAge": 345600,
       "coingeckoId": null,
       "hue": 200,
-      "hasArt": false
+      "hasArt": true
     }
   ]
 }

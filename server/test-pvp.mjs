@@ -205,6 +205,14 @@ async function main() {
   const joined = await a1.next('chain');
   check('a malformed tx hash is dropped, the stage still relayed',
     joined.stage === 'joined' && joined.txHash === null);
+  a1.send({t:'chain', stage:'ready', onchainMatchId:1});
+  let earlyStart=false;
+  await a1.next('start', 400).then(()=>{earlyStart=true;}).catch(()=>{});
+  check('one ready seat cannot start a staked game', !earlyStart);
+  a2.send({t:'chain', stage:'ready', onchainMatchId:1});
+  let unverifiedStart=false;
+  await a1.next('start', 1800).then(()=>{unverifiedStart=true;}).catch(()=>{});
+  check('readiness cannot borrow another pair’s escrow or a settled match', !unverifiedStart);
   for (const c of [m1, a1, a2]) c.close();
 
   // ── ranked needs a signature ───────────────────────────────────────────

@@ -12,7 +12,7 @@ import { MongoClient } from 'mongodb';
 import { client, freshAccount, signed, startRelay, tally } from './test-util.mjs';
 
 const URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27019';
-const DB = `mempire_persist_test_${Date.now()}`;
+const DB = `mempire_arc_test_${Date.now()}`;
 const PORT = Number(process.env.PORT ?? 8797);
 const { check, done } = tally();
 
@@ -20,11 +20,11 @@ const mongo = new MongoClient(URI, { serverSelectionTimeoutMS: 3000 });
 try {
   await mongo.connect();
 } catch (e) {
-  console.log(`no MongoDB at ${URI} — start one with scripts/local-up.sh (${e.message})`);
+  console.log(`MongoDB unavailable (${e.name})`);
   process.exit(1);
 }
 
-console.log(`persistence → ${URI}/${DB}, relay :${PORT}\n`);
+console.log(`persistence → database ${DB}, relay :${PORT}\n`);
 // A dev chain id with nothing listening: this suite needs no chain at all.
 const env = { MONGODB_URI: URI, MONGODB_DB: DB, CHAIN_ID: '31338', RPC_URL: 'http://127.0.0.1:1' };
 const player = freshAccount();
@@ -38,6 +38,9 @@ try {
   check('health reports a persistent store', health.data?.persistent === true && health.data?.db === DB, JSON.stringify(health.data).slice(0, 120));
   const put = await req('PUT', `/api/player/${player.address}`, await signed(player, 'player.put', slice));
   check('signed save is 200', put.status === 200, `${put.status} ${put.data?.error ?? ''}`);
+  const clan = await req('POST', '/api/clans', await signed(player, 'clan.create', {name:'Persistence Knights', power:80}));
+  check('signed clan creation is persisted', clan.status === 201 || clan.status === 200);
+  const tag = clan.data?.tag;
   await relay.stop();
 
   console.log('\n2. read through a fresh relay process');
@@ -47,6 +50,8 @@ try {
   check('the slice is still there after a restart', got.status === 200 && got.data?.gems === 42 && got.data?.cards?.[0]?.level === 3,
     JSON.stringify(got.data).slice(0, 160));
   check('history survived too', got.data?.history?.length === 1);
+  const clanAgain = await req('GET', `/api/clans/${tag}`);
+  check('clan and founder survive a process restart', clanAgain.data?.name === 'Persistence Knights' && clanAgain.data?.members?.length === 1);
   const raw = await mongo.db(DB).collection('players').findOne({ _id: player.address.toLowerCase() })
     ?? await mongo.db(DB).collection('players').findOne({ _id: player.address });
   check('and it is a real document in MongoDB', Boolean(raw) && raw.gems === 42);

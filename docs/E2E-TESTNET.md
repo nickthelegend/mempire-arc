@@ -78,3 +78,50 @@ PORT=8780 META_KEEPER=0 ONBOARD_USDC_DRIP=0.1 node index.js &     # relay on Arc
 ```
 
 `server/test-gateway-journal.mjs` needs MongoDB and was not part of this pass.
+
+## 2026-10-14: two-player browser acceptance (NOT RUN TO COMPLETION)
+
+`npm run e2e:two-players` now implements two isolated Playwright contexts, actual Guest sign-in and automatic
+starter-deck onboarding, the $1 Ranked queue, both escrows, real-time card/canvas clicks, normal two-claim settlement,
+$1.80 payout verification, private recovery backups and sweeps. It does not import the bot, accelerate the clock,
+change app state or submit a replacement claim from the test process. See `scripts/e2e-two-players.mjs` and the README.
+
+**Actual result here:** Chromium launch was refused by the managed macOS sandbox:
+`MachPortRendezvous ... bootstrap_check_in ... Permission denied (1100)`.
+The command exited before browser creation, onboarding or funding. **No new match, payout, transaction or human-play
+claim is made. Gross and net testnet spend in this pass: 0 USDC.** The earlier match #1 above remains the only live
+settlement evidence; it is still the earlier accelerated bot match, not a result of the new harness.
+
+Budget is also explicit: default gross funding cap 2 USDC, while two fresh $1 stakes and the app's session floats
+need about 2.28 USDC temporarily plus funding gas. The script refuses this excess before sending. Reusing funded
+wallets or an explicitly authorized larger temporary float is required; this pass did not assume permission to
+reinterpret the limit as net cost. Keys, browser storage and evidence stay in `.local/two-players/` (gitignored, mode 0600).
+
+Read-only checks completed against **live Arc testnet**:
+
+- Match #1 event and both seats recovered from the arena: winner +0.80 USDC; loser −1.00 USDC.
+- The event and standings materialized in MongoDB database **mempire_arc**, collections `match_history` and
+  `chain_leaderboard`; no synthetic match was inserted into that database.
+- Serverless HTTP handler with Mongo deliberately unreachable: `/api/arc/matches` returned real chain history;
+  clan reads and persistent writes returned 503 rather than accepting volatile records.
+- Atlas restart test: **7/7**, including signed player save, match history, signed clan creation and the clan/founder
+  surviving a process restart. This test used a disposable `mempire_arc_test_*` database and removed it afterward;
+  its fixture data is not live game evidence.
+- WebSocket protocol **24/24**, including refusal to start on only one ready seat or another/settled escrow.
+  Positive escrow-ready countdown and complete browser settlement remain **Not run**.
+- Typecheck, production build, deterministic sim checks and **7/7 Node unit tests** passed. Lint exits 0 with
+  existing warnings; build warns about large chunks. No contract edits or new contract broadcasts in this pass.
+- Connected Chrome (not the blocked Playwright runner): all five cold-visitor routes at 390 and 1280, no horizontal
+  overflow or broken loaded images. Screens and machine-readable audit: `docs/screens/testnet/recheck-*`.
+  A transient RPC history failure displayed an honest unavailable state; reload succeeded. These screenshots
+  **do not establish mobile battle playability, passkey success, or two-human gameplay**.
+
+To reproduce the database checks without broadcasting:
+
+```sh
+node --env-file=server/.env.local server/test-history-read.mjs
+(cd server && node --env-file=.env.local test-persistence.mjs)
+```
+
+The full browser acceptance must still be run on a host allowed to launch Chromium. Its printed transaction links
+and private `evidence.json` should be copied here only after the payout assertion passes.

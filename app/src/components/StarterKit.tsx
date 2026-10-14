@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { IS_MAINNET } from '../chain/provider';
-import { fmtUsdc } from '../lib/format';
 import { fetchStarterClaimed } from '../chain/read';
 import { Pill, Spinner } from './ui';
 import { apiPost } from '../lib/api';
@@ -84,7 +83,7 @@ export function StarterKit() {
             <Spinner size={14} /> Minting your starter deck on Arc…
           </span>
           <p className="fine" style={{ color: 'var(--dim)', margin: 0 }}>
-            {IS_MAINNET ? 'Eight fighters to your account, gas on us.' : 'Eight fighters to your account, and 2 test USDC: stakes and gas, one token.'}
+            {IS_MAINNET ? 'Eight fighters to your account, gas on us.' : 'Eight fighters to your account. Any configured testnet funding lands in the same USDC balance used for stakes and gas.'}
           </p>
         </>
       )}
@@ -95,7 +94,7 @@ export function StarterKit() {
           </span>
           <p className="fine" style={{ color: 'var(--dim)', margin: 0 }}>
             {usdc === 'sent'
-              ? `Eight ERC-721 fighters and ${fmtUsdc(2)} of test USDC are yours. Pick a tier in the Arena and put a dollar on your first match.`
+              ? `Eight ERC-721 fighters and a test USDC top-up are yours. Pick a tier in the Arena and put a dollar on your first match.`
               : 'Eight ERC-721 fighters are yours. Pick a tier in the Arena and put a dollar on your first match.'}
           </p>
           <button

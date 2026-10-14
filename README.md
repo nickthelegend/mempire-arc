@@ -1,14 +1,15 @@
 # Mempire on Arc
 
-Live: https://app-production-ddd3.up.railway.app (Arc testnet)
+**Hosting:** Vercel frontend/serverless HTTP configuration is in `vercel.json`; the revised build has not been deployed in this pass. PvP still requires one always-on WebSocket relay, which has not been provisioned. [Hosting and relay requirements](docs/HOSTING.md).
 
 
 **A real-time 1v1 card battler where the market is the meta — every fighter is priced from a Chainlink Data Feed (Chainlink's own feeds on Arc mainnet; mirrors of them on Arc testnet), every pot is USDC, and the contract pays the winner in the block the second result lands.**
 
-Every fighter is a real asset: majors (BTC, ETH, SOL…), DeFi tokens (LINK, UNI, AAVE), gold (PAXG) and fiat currencies (EUR, JPY, BRL…). Each one is priced by its **Chainlink Data Feed** (on Arc mainnet; Arc testnet has none, so the testnet deployment reads on-chain mirrors of the mainnet rounds, see the trust note below), and yesterday-to-today's move buffs or nerfs it a little — computed on chain. Two players put up a dollar of **USDC**, play a three-minute lane battle, and the arena pays 90% of the pot to the winner. Sign in with a passkey: no seed phrase, no extension, no popups mid-match, and **one token** — USDC is the stake *and* the gas.
+Every fighter is a real asset: majors (BTC, ETH, SOL…), DeFi tokens (LINK, UNI, AAVE), gold (PAXG) and fiat currencies (EUR, JPY, BRL…). Each one is priced by its **Chainlink Data Feed** (on Arc mainnet; Arc testnet has none, so the testnet deployment reads on-chain mirrors of the mainnet rounds, see the trust note below), and yesterday-to-today's move buffs or nerfs it a little — computed on chain. Two players put up a dollar of **USDC**, play a three-minute lane battle, and the arena pays 90% of the pot to the winner. Passkey sign-in is implemented but its browser ceremony remains unverified. The game uses **one token** — USDC is the stake *and* the gas.
 
 - Arc testnet: **deployed and played**. Token, cards, MarketMeta (20 feed mirrors), arena and CCIP gateway are live ([`deployments/arc-testnet.json`](deployments/arc-testnet.json)); a real $1 staked match was paired by the relay, played by the app's sim and settled with the winner paid on chain: [docs/E2E-TESTNET.md](docs/E2E-TESTNET.md). Mainnet is **not** deployed (phase gate).
 - **Testnet price trust assumption.** Chainlink Data Feeds exist on Arc *mainnet* only. On testnet every fighter's "feed" is a `MirrorAggregator` holding copies of Arc-mainnet Chainlink rounds (same ids, answers, timestamps) that our relayer writes. Anyone judging testnet prices is trusting that relayer; mainnet reads Chainlink directly. The app says so wherever it shows a price.
+- **2026-10-14 improvements:** all 20 fighters have portraits; visitors can browse the roster before sign-in; Mongo uses the separate `mempire_arc` database; the public settlement panel and net USDC standings read chain events without a relay. `npm run e2e:two-players` is implemented, but **not passed**: this session’s sandbox refuses Chromium startup before any funding. No new live match is claimed.
 - Also runs end to end on a local fork of **Arc mainnet** with one command.
 - Submission: [SUBMISSION.md](SUBMISSION.md) · Mainnet runbook: [MAINNET.md](MAINNET.md)
 
@@ -19,7 +20,7 @@ Every fighter is a real asset: majors (BTC, ETH, SOL…), DeFi tokens (LINK, UNI
 | Piece | What it does in Mempire | Contract / file | How it was verified |
 |---|---|---|---|
 | **USDC as gas + stake** | Players hold one token. Stakes, mint fees and the session key's gas float are USDC; the arena forwards the float as an ERC-20 USDC transfer, which *is* native gas on Arc. Fees floored above Arc's 20 gwei mempool minimum. | `MempireArena._fundSession`, `app/src/chain/account.ts` (`arcFees`), `server/chain.js` (`feeParams`) | Forge fork test: the ERC-20 float shows up as the session key's native balance; e2e: 5 plays cost 0.0043 USDC of gas |
-| **Sub-second finality** | Every card drop is its own transaction from the match's session key, final before the unit crosses the bridge; settlement lands in the second claim's block. The badge shows measured send-to-receipt. | `MempireArena.play/claim`, `app/src/components/ArcLogBadge.tsx` | Fork e2e: plays confirm in ~330–900 ms. Live testnet: the e2e sent 16 plays + 2 claims, each confirmed before the next (no timing recorded) |
+| **Sub-second finality** | Every affordable card drop is submitted as a transaction from the match's session key, final before the unit crosses the bridge; settlement lands in the second claim's block. The badge shows measured send-to-receipt. | `MempireArena.play/claim`, `app/src/components/ArcLogBadge.tsx` | Fork e2e: plays confirm in ~330–900 ms. Live testnet: the e2e sent 16 plays + 2 claims, each confirmed before the next (no timing recorded) |
 | **EIP-2612 permits on Arc's USDC** | Stake + float, and the mint fee, ride inside one transaction (domain `USDC` / `2`). | `MempireArena._collectStake`, `MempireCards.mint`, `app/src/chain/actions.ts` (`permitFor`) | Unit tests on Circle's FiatToken v2.2 bytecode at `0x3600…`; settlement suite on the fork |
 | **Chainlink Data Feeds** | Every fighter's price (mainnet: Chainlink's feeds; testnet: relayer-written mirrors of them, `MempireCards.priceOf` reads the same interface either way). `mint` reads `latestRoundData` (answer > 0, complete round, fresh within heartbeat + grace) and stamps the card; `MarketMeta.postFromFeeds` computes the 24 h move from the feed's own round history (the caller only names the day-ago round, which the contract proves). | `MempireCards.priceOf`, `MarketMeta.postFromFeeds`, `server/feeds.js`, `server/keeper.js` | **Mainnet feeds: fork only** (all 20 live and fresh; a mint stamps Chainlink's BTC/USD; meta for all 20 recomputed from real history; wrong hints refused). **Testnet mirrors: live** (mint stamped the mirrored BTC answer; `postFromFeeds` for 20 fighters, see E2E doc) |
 | **Chainlink CCIP + Circle CCTP V2** | Play from Base or Ethereum: one source transaction burns USDC with CCTP Fast Transfer to the player's own address on Arc and `ccipSend`s the instruction (open/join a match, or cash out). The Arc gateway is a defensive receiver; an instruction that beats its dollars is stored and the relay completes it when CCTP mints. | `ccip/MempireRemoteEntry.sol`, `ccip/MempireCCIPGateway.sol`, `server/ccip-watch.js`, `app/src/lib/ccip.ts`, `scripts/ccip-send.mjs` | Chainlink Local `CCIPLocalSimulator` (8 tests); fork: real Base→Arc lane quoted, real CCTP burn + `ccipSend` from Base, an ENTER delivered via the real Arc router address (184,755 gas) and completed by ccip-watch. **Fork + Chainlink Local only; no live CCIP/CCTP send from Base ever ran** (user-run script, not run) |
@@ -114,3 +115,24 @@ Full runbook, funding and hosting env: [MAINNET.md](MAINNET.md).
 ## Attribution
 
 Ported from Mempire on Monad (same team); the game client, art, audio, simulation, matchmaker and clans predate this port. Everything chain-facing was rewritten for Arc in this port: USDC stakes and permits, Chainlink Data Feeds pricing and on-chain meta, CCIP + CCTP cross-chain entry, Circle Gateway, Memo tags, ERC-8004, WebAuthn-PRF passkeys, the Arc fork stack and tests. External code: OpenZeppelin, forge-std, Chainlink contracts / CCIP / Chainlink Local, viem, @scure, three.js / R3F; KayKit models (CC0). Written with Claude Code (Anthropic) under the author's direction. MIT — see [LICENSE](LICENSE).
+
+## Two player UI rehearsal
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run e2e:two-players
+```
+
+The last command starts one local frontend (:8700), one relay (:8780), and two isolated Playwright contexts.
+It uses the real guest sign-in and starter-deck UI, clicks Ranked in both, clicks cards on the actual canvas at real time,
+and asserts both claims, the settlement event and a $1.80 winner payout. It never invokes the built-in bot or forces a result.
+Keys, recovery storage, and transaction evidence go only to gitignored `.local/two-players/`; a successful run sweeps sessions
+and players back to the deployer. It refuses mainnet and respects the shared deployer lock.
+
+**Budget:** the default gross funding cap is 2 USDC including funding gas. Two fresh $1 stakes plus session floats and gas
+need about 2.28 USDC temporarily, so this command fails before funding unless the saved wallets are already funded or a
+larger temporary float is explicitly authorized via `E2E_MAX_FUNDING`. A net-cost budget is not silently assumed.
+`E2E_STAGE=onboard` exercises sign-in/deck onboarding only. `E2E_EXTERNAL_SERVERS=1` uses already running local services.
+A sandbox that denies Chromium launch must be changed by the operator; the script does not bypass it.

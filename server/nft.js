@@ -77,7 +77,7 @@ export function registerNftRoutes(app, gate) {
       description: `A Mempire fighter for ${coin?.name ?? ticker} (${ticker}), ${KIND_PHRASE[coin?.kind] ?? 'an asset'} — `
         + `a ${archetype.toLowerCase()} card at level ${level} of ${MAX_LEVEL}. `
         + 'Levels are earned by merging duplicates won from chests, never bought.',
-      image: `${APP_URL}/art/card_${ticker.toLowerCase()}.png`,
+      image: `${APP_URL}/art/card_${ticker.toLowerCase()}.${['BCH','HYPE','AAVE','PAXG','EUR','JPY','AUD','CAD','MXN','BRL','KRW'].includes(ticker) ? 'svg' : 'png'}`,
       external_url: APP_URL,
       attributes,
     });

@@ -10,7 +10,7 @@ const from = join(here, '..', '..', 'shared');
 const to = join(here, '..', 'src', 'shared');
 rmSync(to, { recursive: true, force: true });
 mkdirSync(to, { recursive: true });
-for (const item of ['roster.json', 'abi', 'deployments']) {
+for (const item of ['roster.json', 'abi', 'deployments', 'settlements.mjs', 'settlements.d.mts']) {
   cpSync(join(from, item), join(to, item), { recursive: true });
 }
 console.log(`synced shared/ → ${to}`);

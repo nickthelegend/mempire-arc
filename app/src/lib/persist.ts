@@ -109,10 +109,10 @@ export interface LeaderRow {
 
 export async function loadLeaderboard(): Promise<LeaderRow[]> {
   try {
-    const res = await apiFetch(`/api/leaderboard`);
-    if (!res?.ok) throw new Error(res ? String(res.status) : 'no backend');
-    return (await res.json()) as LeaderRow[];
+    const { chainHistory, settlementBoard } = await import('../chain/history');
+    return settlementBoard(await chainHistory());
   } catch {
-    return [];
+    const res = await apiFetch('/api/leaderboard');
+    return res?.ok ? await res.json() as LeaderRow[] : [];
   }
 }

@@ -1,3 +1,39 @@
+# 2026-10-14 reassessment — improved, acceptance still incomplete
+
+The mandatory two-player real-time browser settlement is **not verified**. The managed sandbox blocks Chromium
+startup before any funding. No new live match or payout is claimed; spend was **0 USDC**.
+
+| Criterion | Before this pass | After | Evidence / remaining limit |
+|---|---|---|---|
+| Relevance to Arc | 8 | 8 | Same live contracts; direct event-based settlement and money standings now survive relay downtime. No new Arc integration claimed. |
+| Technical credibility | 7 | 7 | Atlas persistence and outage handling verified; 24 protocol checks pass. Complete revised escrow-ready match still unrun, so no score uplift. |
+| Build quality | 8 | 8 | 11 original portraits, 20/20 assets present; public roster, first-match coaching, ten responsive route screenshots. Actual mobile battle and passkeys remain untested. |
+| Worth taking further | 8 | 8 | Vercel HTTP entrypoint and minimal relay requirements documented. No always-on relay or revised frontend deployment; central acceptance remains open. |
+
+Changes: both stakes verified before countdown; separate staked/rating queue pools; claim gas reserve raised from
+0.005 to 0.025 USDC; coaching applies to a first live match as well as practice; existing sound and battle VFX retained.
+All missing fighters have vector portraits, including NFT metadata and chest previews. Cold visitors can inspect
+all 20 fighters, and Empire shows the actual settlement event without sign-in. Empty history points to “Play your first match”.
+
+Storage: Monad Mongo credential reused only in ignored env, **mempire_arc** database. Player history/clans survive
+restart (7/7 checks in a disposable DB); real chain events and money standings persist (1 match, 2 player rows).
+Mongo outage: chain reads succeed; unavailable clan/trophy data is explicit because those records have no chain events.
+No mock clan or match was added to the live database. Relayer tasks are disabled in the Vercel function entrypoint.
+
+Validation: typecheck/build pass; 7 Node unit tests pass (auth/memstore files contain 27 additional assertions);
+24 WebSocket checks pass; sim determinism passes; lint exits 0 with pre-existing warnings. Ten connected-Chrome
+screens at 1280/390 have no horizontal overflow or broken images. Build retains large-bundle warnings.
+The new Playwright command **fails at launch in this environment**; do not confuse these Chrome screens with its acceptance.
+
+Still weak: no new two-player gameplay proof, passkey ceremony unrun, mobile battle unrun, revised frontend not deployed,
+no hosted relay, no load test, cold event scanning scales with chain history, legacy integrations retain the statuses below.
+The strict 2 USDC gross cap cannot fund two fresh $1 stakes plus session floats; explicit temporary-float approval or
+prefunded test wallets is required. See [E2E](E2E-TESTNET.md), [hosting](HOSTING.md) and [screens](screens/testnet/).
+
+---
+
+## Historical 2026-10-13 report (superseded by the reassessment above)
+
 # Judge + fix pass: Mempire on Arc (2026-10-13, Arc testnet only)
 
 Scored as an Arc Microgrants judge first, then fixed. Live evidence: [E2E-TESTNET.md](E2E-TESTNET.md). Screens:

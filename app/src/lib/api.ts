@@ -25,7 +25,7 @@ const onLocalhost = typeof window !== 'undefined'
 import { signAction } from './identity';
 
 export const API_BASE: string | null = configured
-  || (onLocalhost ? 'http://localhost:8787' : null);
+  || (onLocalhost ? 'http://localhost:8780' : window.location.origin);
 
 /** True when online features (ladder, clans, sync, PvP) can work at all. */
 export const hasApi = (): boolean => API_BASE !== null;
@@ -41,7 +41,7 @@ export async function apiFetch(
 ): Promise<Response | null> {
   if (!API_BASE) return null;
   try {
-    return await fetch(`${API_BASE}${path}`, init);
+    return await fetch(`${API_BASE}${path}`, { ...init, signal: init?.signal ?? AbortSignal.timeout(8000) });
   } catch {
     return null;
   }
@@ -82,6 +82,6 @@ export async function apiPost(
 
 /** The matchmaker socket URL, or null when there is no backend. */
 export function wsUrl(): string | null {
-  if (!API_BASE) return null;
-  return `${API_BASE.replace(/^http/, 'ws')}/ws`;
+  const relay = (import.meta.env.VITE_RELAY_URL as string | undefined)?.trim() || configured || (onLocalhost ? API_BASE : null);
+  return relay ? `${relay.replace(/^http/, 'ws')}/ws` : null;
 }

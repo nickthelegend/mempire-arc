@@ -1,0 +1,29 @@
+import fs from 'node:fs';
+// Original vector fighters: the existing chibi proportions, thick ink outlines,
+// faceted armour, large eyes and gold trim, with distinct silhouettes per asset.
+const fighters = [
+ ['bch','Jade Sentinel','#27bf82','shield','B'], ['hype','Tide Lancer','#51dcca','trident','H'],
+ ['aave','Spectral Warden','#a78cf0','ghost','A'], ['paxg','Bullion King','#eab83d','crown','Au'],
+ ['eur','Star Paladin','#416fd4','stars','€'], ['jpy','Crimson Ronin','#d95655','horns','¥'],
+ ['aud','Outback Ranger','#65ac77','hat','A$'], ['cad','Maple Guardian','#d95b58','maple','C$'],
+ ['mxn','Sun Jaguar','#42bd94','ears','M$'], ['brl','Emerald Striker','#b2cf42','plume','R$'],
+ ['krw','Moon Duelist','#639fdf','moon','₩'],
+];
+for (const [ticker,name,color,shape,symbol] of fighters) {
+ const crown = shape==='crown' ? '<path d="M157 168l-12-87 59 42 52-69 52 69 59-42-12 87z" fill="url(#gold)"/>'
+ : shape==='horns' ? '<path d="M163 165Q59 120 106 45l83 95m160 25Q453 120 406 45l-83 95" fill="url(#gold)"/>'
+ : shape==='ears' ? '<path d="M138 174l-16-110 87 77m165 33 16-110-87 77" fill="url(#metal)"/>'
+ : shape==='hat' ? '<path d="M91 172q165-69 330 0l-49 31H140zM167 167l25-89h128l25 89" fill="url(#gold)"/>'
+ : shape==='plume' ? '<path d="M245 123Q149 41 220 25l40 71Q267 4 312 37l-41 97" fill="url(#metal)"/>'
+ : shape==='ghost' ? '<path d="M139 218Q119 112 209 93L256 43l52 48q97 27 67 127" fill="url(#metal)"/>'
+ : '<path d="M211 131l8-80 37-20 37 20 8 80" fill="url(#gold)"/>';
+ const prop = shape==='trident' ? '<path d="M425 545V175m-35 22v-58m70 58v-58m-35 36v-70m-35 91q35 43 70 0" fill="none" stroke="#ffe28a" stroke-width="16"/>'
+ : ['horns','moon'].includes(shape) ? '<path d="M410 513L436 139Q475 207 425 524z" fill="#d3edff"/><path d="M390 448l69 15" stroke="#ffcc57" stroke-width="20"/>'
+ : '<path d="M359 350q67-35 113 11l-12 128-50 43-52-45z" fill="url(#metal)"/><path d="M375 366q37-17 80 6l-10 105-34 30-36-31z" fill="url(#gold)"/>';
+ const icon = shape==='maple' ? '<path d="M256 321l-12 35-23-16 6 32-34-5 18 29-13 12 48 9v27h20v-27l48-9-13-12 18-29-34 5 6-32-23 16z" fill="#ffed9c"/>'
+ : shape==='stars' ? '<path d="M256 322l18 33 39 7-28 27 5 39-34-18-34 18 5-39-28-27 39-7z" fill="#fff1a4"/>'
+ : `<text x="256" y="406" text-anchor="middle" font-family="Arial,sans-serif" font-size="${symbol.length>1?57:85}" font-weight="900" fill="#fff0ad" stroke="#94501c" stroke-width="2">${symbol}</text>`;
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="683" viewBox="0 0 512 683"><title>${name} — ${ticker.toUpperCase()}</title><defs><linearGradient id="gold" x2=".8" y2="1"><stop stop-color="#fff0a0"/><stop offset=".45" stop-color="#f4ba35"/><stop offset="1" stop-color="#a35b16"/></linearGradient><linearGradient id="metal" x2=".8" y2="1"><stop stop-color="#f0ffff"/><stop offset=".24" stop-color="${color}"/><stop offset="1" stop-color="#15334d"/></linearGradient><radialGradient id="face" cx=".4" cy=".3"><stop stop-color="#fff0b6"/><stop offset="1" stop-color="#e6a460"/></radialGradient></defs><g stroke="#21172c" stroke-width="8" stroke-linejoin="round"><path d="M152 285Q66 390 71 582l94-40 91 40 92-40 93 40q5-192-82-297z" fill="${color}"/><path d="M157 478l-22 127 95 13 29-126m96-14 22 127-95 13-29-126" fill="url(#metal)"/><path d="M132 578q-38 10-36 57 46 29 143 7l-8-55m149-9q38 10 36 57-46 29-143 7l8-55" fill="url(#gold)"/><path d="M153 306q103-63 206 0l25 155-71 61H199l-71-61z" fill="url(#gold)"/><path d="M149 301l-55 10-36 70 58 26 63-66m184-40 55 10 36 70-58 26-63-66" fill="url(#metal)"/><path d="M73 372q-43 10-26 67l49 26 39-50-21-41z" fill="url(#gold)"/>${prop}<ellipse cx="256" cy="384" rx="93" ry="98" fill="url(#metal)"/><ellipse cx="256" cy="384" rx="78" ry="83" fill="${color}"/>${icon}<path d="M134 179q-4-89 122-89t122 89v72q-11 72-122 74-111-2-122-74z" fill="url(#metal)"/>${crown}<path d="M159 177q98-69 194 0v65q-9 62-97 66-88-4-97-66z" fill="url(#face)"/><ellipse cx="207" cy="223" rx="27" ry="35" fill="#fff9e5" stroke-width="5"/><ellipse cx="305" cy="223" rx="27" ry="35" fill="#fff9e5" stroke-width="5"/><ellipse cx="214" cy="227" rx="15" ry="24" fill="#2c2025" stroke="none"/><ellipse cx="298" cy="227" rx="15" ry="24" fill="#2c2025" stroke="none"/><circle cx="219" cy="216" r="7" fill="white" stroke="none"/><circle cx="303" cy="216" r="7" fill="white" stroke="none"/><path d="M181 179l48 12m102-12-48 12" stroke="#754321" stroke-width="14"/><path d="M233 272q23 17 46-2" fill="none" stroke="#78411e" stroke-width="5"/><ellipse cx="256" cy="252" rx="18" ry="11" fill="#e7a05a" stroke="none"/><path d="M139 178l-23 50 30 51 17-98m210-3 23 50-30 51-17-98" fill="url(#gold)"/><path d="M179 329l-30 45 27 61m157-106 30 45-27 61" fill="none" stroke="#e8ffe9" stroke-width="5" opacity=".5"/></g></svg>`;
+ fs.writeFileSync(`app/public/art/card_${ticker}.svg`,svg);
+}
+console.log(`Created ${fighters.length} original Arc fighter portraits.`);

@@ -36,7 +36,7 @@ export const SESSION_GAS_WEI = 100_000_000_000_000_000n; // 0.1 USDC
  */
 export const STAKE_USDC_NEEDED = 0.12;
 /** Kept back from logging so the seat can always afford to record its result. */
-export const CLAIM_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 USDC
+export const CLAIM_RESERVE_WEI = 25_000_000_000_000_000n; // 0.025 USDC: includes the second claim’s settlement gas ceiling
 
 /** The USDC a create/join forwards to the seat's session key. */
 export const sessionGasWei = (): bigint => SESSION_GAS_WEI;

@@ -110,7 +110,7 @@ function build(): Coin[] {
     // WebP at ~58 KB rather than the 413 KB PNG; the PNG stays on disk because
     // NFT metadata points at it. Both the card frame and the battle billboard
     // fall back to a procedural badge if a file is missing.
-    cardArt: `/art/card_${c.ticker.toLowerCase()}.webp`,
+    cardArt: `/art/card_${c.ticker.toLowerCase()}.${['BCH','HYPE','AAVE','PAXG','EUR','JPY','AUD','CAD','MXN','BRL','KRW'].includes(c.ticker) ? 'svg' : 'webp'}`,
   }));
 }
 

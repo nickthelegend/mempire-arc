@@ -1,3 +1,5 @@
+> Hosting policy: frontend and ordinary HTTP routes belong on Vercel. No paid relay is provisioned; see [HOSTING.md](../docs/HOSTING.md). Mongo database: `mempire_arc`.
+
 # Mempire relay (Arc)
 
 Player state, the trophy ladder, clans, the PvP matchmaker, and the thin chain
@@ -25,14 +27,14 @@ npm run dev                # reads .env; see .env.example
 
 No `MONGODB_URI` is fine locally: the relay boots on an in-memory store and says
 so in `/api/health`. Set it for any deployment. The relay is deployed from this
-directory alone (Railway: `railway.json` + `Dockerfile`, one instance — the
+directory alone (`Dockerfile`, one instance — the
 matchmaker is in-process state), so `npm run sync-shared` vendors `roster.json`,
 `abi/` and `deployments/` into `server/shared/`; rerun and commit after a deploy.
 
 ## Configuration
 
 Every variable is documented in [`.env.example`](.env.example); the hosted set is
-in [../MAINNET.md](../MAINNET.md#relay-railway). The important ones:
+in [../MAINNET.md](../docs/HOSTING.md). The important ones:
 
 | Variable | Default | Notes |
 |---|---|---|

@@ -1,4 +1,4 @@
-import { erc20Abi, formatEther, formatUnits, type Abi, type Address } from 'viem';
+import { parseAbi, erc20Abi, formatEther, formatUnits, type Abi, type Address } from 'viem';
 import cardsAbi from '../shared/abi/MempireCards.json';
 import arenaAbi from '../shared/abi/MempireArena.json';
 import metaAbi from '../shared/abi/MarketMeta.json';
@@ -356,4 +356,23 @@ export async function fetchDeckCards(matchId: number, seat: 0 | 1): Promise<Chai
     } satisfies ChainCard;
   }));
   return cards;
+}
+
+/** Display prices without the game relay, from the same feeds minting reads. */
+export async function fetchFeedPrices() {
+  if (!DEPLOYMENT) return [];
+  const c = publicClient();
+  const coins = await c.readContract({address:DEPLOYMENT.cards, abi:CARDS_ABI, functionName:'roster'}) as {feed: Address; maxPriceAge: bigint}[];
+  const abi = parseAbi(['function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)', 'function decimals() view returns (uint8)']);
+  return (await Promise.all(coins.map(async (coin, coinId) => {
+    try {
+      const [round, decimals] = await Promise.all([
+        c.readContract({address:coin.feed, abi, functionName:'latestRoundData'}),
+        c.readContract({address:coin.feed, abi, functionName:'decimals'}),
+      ]);
+      // Stale feeds must not look like a current price. Contracts independently enforce this.
+      if (round[1] <= 0n || Date.now()/1000 - Number(round[3]) > Number(coin.maxPriceAge)) return null;
+      return {coinId, priceUsd:Number(round[1])/10**decimals};
+    } catch { return null; }
+  }))).filter((r): r is {coinId:number; priceUsd:number} => r !== null);
 }

@@ -6,6 +6,7 @@ import { RankChip } from '../components/ClanBits';
 import { fmtUsdc, fmtStake, shortAddr } from '../lib/format';
 import { loadLeaderboard } from '../lib/persist';
 import { apiFetch } from '../lib/api';
+import { chainHistory } from '../chain/history';
 import { useCollection } from '../state/collection';
 import { useMatch } from '../state/match';
 import { useWallet } from '../state/wallet';
@@ -20,23 +21,21 @@ interface SettledRow { matchId: number; winner: string; pot: string; rake: strin
 /** The arena's own settled matches, read from chain events by the relay: real pots, explorer links, no client reports. */
 function RecentMatches() {
   const [rows, setRows] = useState<SettledRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    void apiFetch('/api/arc/matches').then(async (r) => {
-      const j = r && r.ok ? await r.json().catch(() => null) : null;
-      if (live) setRows(j?.matches ?? []);
-    });
+    void chainHistory().then((matches) => { if (live) setRows(matches); }).catch((error: unknown) => { console.warn('[history]', error instanceof Error ? error.message : String(error)); if (live) setFailed(true); });
     return () => { live = false; };
   }, []);
   return (
     <section aria-label="Settled on Arc">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
         <span className="label">Settled on {NETWORK_LABEL}</span>
-        <span className="label" style={{ fontSize: 12 }}>read from the arena contract</span>
+        <span className="label" style={{ fontSize: 12 }}>verified events</span>
       </div>
       <div className="well" style={{ padding: '2px 10px', minHeight: 54 }}>
         {rows === null ? (
-          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>loading…</p>
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>{failed ? 'Could not read Arc history. Reload to retry; balances and stakes remain on chain.' : 'Reading settled matches from Arc…'}</p>
         ) : rows.length === 0 ? (
           <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>No matches have settled on this deployment yet — the first staked match will appear here with its explorer link.</p>
         ) : rows.slice(0, 5).map((m, i) => {
@@ -113,7 +112,7 @@ const EMPTY: Record<Board, string> = {
 };
 
 function Leaderboard({ me }: { me: string }) {
-  const [board, setBoard] = useState<Board>('trophies');
+  const [board, setBoard] = useState<Board>('usdc');
   const [rows, setRows] = useState<BoardRow[] | null>(null);
 
   useEffect(() => {
@@ -150,7 +149,7 @@ function Leaderboard({ me }: { me: string }) {
       </div>
       <div role="tabpanel" className="well" style={{ padding: '2px 10px', minHeight: 54 }}>
         {rows === null ? (
-          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>loading…</p>
+          <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>Loading standings…</p>
         ) : rows.length === 0 ? (
           <p className="fine" style={{ margin: '14px 0', fontSize: 12, color: 'var(--dim)' }}>{EMPTY[board]}</p>
         ) : rows.slice(0, 10).map((r, i) => (
@@ -231,6 +230,7 @@ export function Empire() {
         </div>
       )}
 
+      {!wallet.connected && <RecentMatches />}
       {wallet.connected && (
         <>
           <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -267,7 +267,7 @@ export function Empire() {
                   onClick={() => nav('/')}
                   style={{ fontSize: 15, minHeight: 44, padding: '10px 20px', width: 'auto' }}
                 >
-                  Find a match
+                  Play your first match
                 </Pill>
               </div>
             ) : (

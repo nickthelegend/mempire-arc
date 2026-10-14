@@ -59,6 +59,7 @@ export interface MatchedPayload {
 
 export interface PvpCallbacks {
   onQueued?: () => void;
+  onStart?: (startAt: number, serverNow: number) => void;
   onMatched?: (m: MatchedPayload) => void;
   onInput?: (input: InputEvent) => void;
   onDesync?: (tick: number) => void;
@@ -85,7 +86,7 @@ export interface PvpCallbacks {
 
 /** What one seat tells the other about the on-chain half of the match. */
 export interface ChainRelay {
-  stage: 'opened' | 'joined' | 'failed';
+  stage: 'opened' | 'joined' | 'ready' | 'failed';
   onchainMatchId: number | null;
   matchAccount: string | null;
   reason: string | null;
@@ -123,6 +124,7 @@ export function pvpConnect(cb: PvpCallbacks): void {
     let msg: Record<string, unknown>;
     try { msg = JSON.parse(String(e.data)); } catch { return; }
     switch (msg.t) {
+      case 'start': callbacks.onStart?.(Number(msg.startAt), Number(msg.serverNow)); break;
       case 'queued': callbacks.onQueued?.(); break;
       case 'matched':
         matched = true;
@@ -158,6 +160,7 @@ export function pvpQueue(payload: {
   trophies?: number;
   /** Ranked queues only pair with other ranked queues. */
   ranked?: boolean;
+  staked?: boolean;
   /** A 30s Rush must never be seated against a 3-minute standard match. */
   format?: 'standard' | 'rush';
   /** USDC is the only stake currency; tiers are never paired across. */
@@ -178,7 +181,7 @@ export const pvpCancel = (): void => send({ t: 'cancel' });
 
 /** Tell the other seat where the escrow got to. */
 export const pvpSendChain = (m: {
-  stage: 'opened' | 'joined' | 'failed';
+  stage: 'opened' | 'joined' | 'ready' | 'failed';
   onchainMatchId?: number | null;
   matchAccount?: string | null;
   reason?: string | null;

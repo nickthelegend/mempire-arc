@@ -1,6 +1,6 @@
 # Mempire — Arc Microgrants submission
 
-Live: https://app-production-ddd3.up.railway.app (Arc testnet)
+Frontend target: Vercel; revised build not deployed in this pass. PvP requires a separately operated relay. [Hosting](docs/HOSTING.md).
 
 
 | | |

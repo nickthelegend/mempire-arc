@@ -33,7 +33,7 @@ let mainnet = null;
 let last = { at: 0, pushed: 0, error: null };
 export const mirrorStatus = () => ({ enabled: enabled(), ...last });
 
-const enabled = () => !IS_MAINNET && deployment?.priceFeeds === 'mirror' && Boolean(relayerAddress());
+const enabled = () => process.env.MIRROR_KEEPER !== '0' && !IS_MAINNET && deployment?.priceFeeds === 'mirror' && Boolean(relayerAddress());
 
 async function syncOne(testnet, mirror) {
   mainnet ??= createPublicClient({ transport: http(MAINNET_RPC, { retryCount: 2, timeout: 15_000 }) });

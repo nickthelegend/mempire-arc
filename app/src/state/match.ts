@@ -4,7 +4,7 @@ import { COINS } from '../lib/coins';
 import { recordMatch } from '../lib/persist';
 import { signAction } from '../lib/identity';
 import {
-  pvpCancel, pvpClose, pvpConnect, pvpQueue, pvpSendEnded, pvpSendHash, pvpSendInput,
+  pvpCancel, pvpClose, pvpConnect, pvpQueue, pvpSendEnded, pvpSendHash, pvpSendInput, pvpSendChain,
   pvpSendTick,
   type MatchedPayload,
 } from '../lib/pvp';
@@ -287,6 +287,9 @@ let lastOpponentAdvanceAt = 0;
 
 /** The last tick we told the opponent about, so we announce at a fixed rate. */
 let lastAnnouncedTick = 0;
+
+let startEscrowBattle: ((startAt: number, serverNow: number) => void) | null = null;
+let waitForEscrow = false;
 
 let pendingJoin: {
   stake: number; currency: StakeCurrency; opponent: string; deck: number[];
@@ -613,6 +616,7 @@ export const useMatch = create<MatchStore>((set, get) => ({
     }, SOLO_WAIT_MS));
 
     pvpConnect({
+      onStart: (at, now) => startEscrowBattle?.(at, now),
       onMatched: (m) => {
         if (fellBack) return;
         opponentTrophies = Number(m.opponent.trophies) || 0;
@@ -651,14 +655,14 @@ export const useMatch = create<MatchStore>((set, get) => ({
             // was ever written to the on-chain log — half of every human
             // match, missing from the record that is supposed to be the
             // whole point of keeping one.
-            if (ok) beginPlayLog(msg.onchainMatchId!);
+            if (ok) { beginPlayLog(msg.onchainMatchId!); if (startEscrowBattle) pvpSendChain({stage:'ready', onchainMatchId:msg.onchainMatchId!}); }
           }).then(() => verifyOpponentCommitment(msg.onchainMatchId!));
         }
         if (msg.stage === 'joined' && msg.onchainMatchId !== null) {
           // Seat 0 learns its stake was matched, and only now spends a
           // transaction on the log.
           void useEscrow.getState().awaitActive(msg.onchainMatchId)
-            .then((ok) => { if (ok) beginPlayLog(msg.onchainMatchId!); })
+            .then((ok) => { if (ok) { beginPlayLog(msg.onchainMatchId!); if (startEscrowBattle) pvpSendChain({stage:'ready', onchainMatchId:msg.onchainMatchId!}); } })
             .then(() => verifyOpponentCommitment(msg.onchainMatchId!));
         }
       },
@@ -745,6 +749,7 @@ export const useMatch = create<MatchStore>((set, get) => ({
         // seated against a 3-minute standard match.
         trophies: useLadder.getState().trophies,
         ranked,
+        staked: useChain.getState().mode === 'onchain' && canSign() && canAffordStake(stake, deck.currency) && Boolean(onchainDeckIds()),
         format: rush ? 'rush' : 'standard',
         currency: deck.currency,
       });
@@ -1161,12 +1166,9 @@ function beginHumanBattle(
   /**
    * The real escrow.
    *
-   * Runs only for a ranked, staked match with a wallet that can sign and a
-   * fully-minted deck; anything else plays for the ladder alone and the Arena
-   * says so. Not awaited: a create/join round trip is seconds of wallet
-   * prompts and confirmations, and the match must start on the shared clock
-   * both clients already agreed on. The escrow store carries the outcome, and
-   * settlement checks it before claiming anything was paid.
+   * Staked seats wait for both wallets to escrow, both sims to be built,
+   * and the relay to verify the same active match before a shared countdown.
+   * Unstaked rating matches retain the original server-clock start.
    *
    * Seat 0 opens and relays the id; seat 1 waits for that relay, verifies the
    * match account itself, and matches the stake. Neither can be made to stake
@@ -1183,6 +1185,8 @@ function beginHumanBattle(
     && canSign()
     && affordable;
   const chainDeck = canStake ? onchainDeckIds() : null;
+  waitForEscrow = Boolean(canStake && chainDeck);
+  startEscrowBattle = null;
   // Money path: say out loud what was decided and why. A stake that silently
   // does not happen is the worst failure this app has, and it left no trace.
   console.info('[escrow] role', m.role, 'stakeSol', stakeSol,
@@ -1195,6 +1199,7 @@ function beginHumanBattle(
           if (id === null) return;
           if (await escrow.awaitActive(id)) {
             beginPlayLog(id);
+            if (startEscrowBattle) pvpSendChain({ stage: 'ready', onchainMatchId: id });
             void verifyOpponentCommitment(id);
           }
         });
@@ -1297,13 +1302,40 @@ function startHumanSim(
   // Both clients hold on 'found' until the shared start instant, then step
   // against the same clock. The interval runs at half a tick so a late timer
   // callback still lands inside the right tick window.
-  const untilStart = Math.max(0, m.startAt - sharedNow());
-  queueTimers.push(setTimeout(() => {
-    if (useMatch.getState().status !== 'found') return;
-    useMatch.setState({ status: 'battle', sim, version: 0, crowns: [0, 0], shock: null });
-    startMusic();
-    loop = setInterval(tickHuman, TICK_MS / 2);
-  }, untilStart));
+  const launch = (startAt: number, serverNow: number) => {
+    if (waitForEscrow && useEscrow.getState().phase !== 'live') return;
+    startEscrowBattle = null;
+    humanStartAt = startAt;
+    clockSkew = serverNow - Date.now();
+    lastOpponentAdvanceAt = Date.now();
+    queueTimers.push(setTimeout(() => {
+      if (useMatch.getState().status !== 'found') return;
+      useMatch.setState({ status: 'battle', sim, version: 0, crowns: [0, 0], shock: null });
+      startMusic();
+      loop = setInterval(tickHuman, TICK_MS / 2);
+    }, Math.max(0, startAt - sharedNow())));
+  };
+  if (waitForEscrow) {
+    startEscrowBattle = launch;
+    // Keep readiness retryable across a transient verification RPC failure.
+    const announceReady = () => {
+      if (!startEscrowBattle || useMatch.getState().status !== 'found') return;
+      const current = useEscrow.getState();
+      if (current.phase === 'live' && current.matchId) pvpSendChain({stage:'ready', onchainMatchId:current.matchId});
+      queueTimers.push(setTimeout(announceReady, 2000));
+    };
+    announceReady();
+    // Readiness can precede the metadata fetch above; repeat it after the sim is built.
+    const e = useEscrow.getState();
+    if (e.phase === 'live' && e.matchId) pvpSendChain({stage:'ready', onchainMatchId:e.matchId});
+    queueTimers.push(setTimeout(() => {
+      if (useMatch.getState().status !== 'found') return;
+      startEscrowBattle = null;
+      void useEscrow.getState().withdraw();
+      pvpClose();
+      useMatch.setState({status:'idle'});
+    }, 90_000));
+  } else launch(m.startAt, m.serverNow ?? Date.now());
 }
 
 /** Remote inputs join the same queue local ones do — the sim cannot tell. */
